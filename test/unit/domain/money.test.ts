@@ -30,4 +30,12 @@ describe("Money", () => {
 		expect(Money.euros(5).equals(Money.euros(5))).toBe(true);
 		expect(Money.euros(5).equals(Money.euros(5.01))).toBe(false);
 	});
+
+	it("se reconstruit à partir de centimes (lecture en base)", () => {
+		expect(Money.cents(4250)).toEqual(Money.euros(42.5));
+	});
+
+	it("refuse un nombre de centimes non entier", () => {
+		expect(() => Money.cents(10.5)).toThrow(RangeError);
+	});
 });
