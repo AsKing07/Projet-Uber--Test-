@@ -1,0 +1,11 @@
+# Base PostgreSQL pour le DÉVELOPPEMENT local (npm run db:up).
+# Les tests d'intégration n'en ont pas besoin : Testcontainers lance sa propre base jetable.
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: uber
+      POSTGRES_PASSWORD: uber
+      POSTGRES_DB: uber

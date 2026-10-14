@@ -1,0 +1,44 @@
+{
+	"name": "projet-uber",
+	"version": "1.0.0",
+	"description": "Projet Uber - M2 Lead Dev, module Tests (TDD)",
+	"private": true,
+	"license": "MIT",
+	"scripts": {
+		"dev": "tsx src/api/server.ts",
+		"test": "vitest",
+		"test:unit": "vitest run",
+		"test:integration": "vitest run --config vitest.integration.config.ts",
+		"test:e2e": "vitest run --config vitest.e2e.config.ts",
+		"test:coverage": "vitest run --coverage",
+		"test:mutate": "stryker run",
+		"typecheck": "tsc --noEmit",
+		"lint": "biome check .",
+		"lint:fix": "biome check --write .",
+		"knex": "knex --knexfile db/knexfile.js",
+		"db:up": "docker compose up -d"
+	},
+	"dependencies": {
+		"cors": "^2.8.5",
+		"express": "^5.1.0",
+		"knex": "^3.1.0",
+		"pg": "^8.16.3"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.2.4",
+		"@stryker-mutator/core": "9.1.1",
+		"@stryker-mutator/vitest-runner": "9.1.1",
+		"@types/cors": "^2.8.19",
+		"@types/express": "^5.0.3",
+		"@types/node": "24.5.2",
+		"@types/supertest": "^6.0.3",
+		"@vitest/coverage-v8": "3.2.4",
+		"supertest": "^7.1.4",
+		"testcontainers": "^11.6.0",
+		"tsx": "^4.20.5",
+		"typescript": "5.9.2",
+		"vite-tsconfig-paths": "5.1.4",
+		"vitest": "3.2.4",
+		"@testcontainers/postgresql": "^11.6.0"
+	}
+}
