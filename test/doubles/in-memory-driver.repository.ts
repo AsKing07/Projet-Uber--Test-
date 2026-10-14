@@ -10,7 +10,7 @@ export class InMemoryDriverRepository implements DriverRepository {
 	}
 
 	async findAll(): Promise<Driver[]> {
-		return [...this.drivers.values()];
+		return [...this.drivers.values()].sort((a, b) => a.id.localeCompare(b.id));
 	}
 
 	async save(driver: Driver): Promise<void> {

@@ -10,6 +10,13 @@ export class Money {
 		return new Money(Math.round(amount * 100));
 	}
 
+	/** Reconstruit un montant à partir de centimes (lecture en base de données). */
+	static cents(amount: number): Money {
+		if (!Number.isInteger(amount))
+			throw new RangeError(`Un montant en centimes doit être entier : ${amount}`);
+		return new Money(amount);
+	}
+
 	static zero(): Money {
 		return new Money(0);
 	}
