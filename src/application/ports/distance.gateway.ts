@@ -1,10 +1,6 @@
-import type { Location } from "@/domain/location";
+import type { Route } from "@/domain/route";
 
-export type Route = {
-	from: Location;
-	to: Location;
-	distanceKm: number;
-};
+export type { Route };
 
 /** Distance et villes entre deux adresses. Implémentation réelle : Google Maps (Story 7). */
 export interface DistanceGateway {
