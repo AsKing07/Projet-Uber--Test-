@@ -36,6 +36,8 @@ describe("Money", () => {
 	});
 
 	it("refuse un nombre de centimes non entier", () => {
-		expect(() => Money.cents(10.5)).toThrow(RangeError);
+		expect(() => Money.cents(10.5)).toThrow(
+			new RangeError("Un montant en centimes doit être entier : 10.5"),
+		);
 	});
 });

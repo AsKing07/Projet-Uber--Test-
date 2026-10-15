@@ -73,6 +73,7 @@ describe("calculateRidePrice", () => {
 			{ label: "24/12 à 17h59", date: "2026-12-24T17:59:00+01:00" },
 			{ label: "26/12 à 00h00", date: "2026-12-26T00:00:00+01:00" },
 			{ label: "23/12 à 12h00", date: "2026-12-23T12:00:00+01:00" },
+			{ label: "23/12 à 20h00 (soir, mais pas celui du 24)", date: "2026-12-23T20:00:00+01:00" },
 			{ label: "25/11 à 12h00", date: "2026-11-25T12:00:00+01:00" },
 		])("ne double pas le prix le $label", ({ date }) => {
 			expect(priceOf({ at: new Date(date) })).toEqual(Money.euros(7));

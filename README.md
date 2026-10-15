@@ -2,20 +2,35 @@
 
 Projet du module Tests (M2 Lead Dev). Tout le code métier est écrit en **TDD**.
 
-## Démarrer
+## Installation
+
+Prérequis : **Node.js 22** et **Docker** (pour les tests d'intégration, les E2E sur PostgreSQL et la base de dev).
 
 ```bash
 npm install
-npm test                  # tests unitaires en mode watch
-npm run test:unit         # tests unitaires, une seule fois
-npm run test:integration  # tests d'intégration (Docker doit être lancé)
-npm run test:e2e          # tests de l'API HTTP (Supertest)
-npm run test:coverage     # couverture v8
-npm run test:mutate       # tests de mutation (Stryker)
-npm run lint:fix          # Biome : formatage et lint
-npm run typecheck         # vérification des types TypeScript
+cp .env.example .env      # puis renseigner GOOGLE_MAPS_API_KEY (voir décision d8)
+npm run db:up             # PostgreSQL de développement (docker compose)
+npm run knex -- migrate:latest
 npm run dev               # lance l'API sur http://localhost:3000
 ```
+
+## Commandes de test
+
+```bash
+npm test                  # tests unitaires en mode watch
+npm run test:unit         # tests unitaires, une seule fois (sans Docker ni réseau)
+npm run test:integration  # tests d'intégration : vraie PostgreSQL via Testcontainers (Docker lancé)
+npm run test:e2e          # tests de l'API HTTP (Supertest), sur fakes et sur une vraie PostgreSQL
+npm run test:coverage     # couverture v8 (domain et application)
+npm run test:mutate       # tests de mutation (Stryker), domain et application
+npm run test:mutate:prix  # tests de mutation du moteur de prix seulement (~45 s)
+npm run lint:fix          # Biome : formatage et lint
+npm run typecheck         # vérification des types TypeScript
+```
+
+Le test d'intégration Google (`google-maps-scanner.it-spec.ts`) n'est lancé que si `GOOGLE_MAPS_API_KEY` est défini.
+Les tests unitaires tournent dans le fuseau **America/New_York** (`vitest.config.ts`) : ils prouvent que les règles
+de date se jugent bien en heure de Paris, quel que soit le fuseau du serveur (décision d4).
 
 ## Architecture (hexagonale, DDD léger)
 
@@ -66,10 +81,47 @@ db/
 Prix en euros, dates en ISO 8601. Erreurs : `{ code, error }` ; toute erreur technique répond `500 { code: "INTERNAL_ERROR" }` sans détail interne.
 Démarrage : `DATABASE_URL` et `GOOGLE_MAPS_API_KEY` obligatoires (voir `.env.example`), base migrée (`npm run knex -- migrate:latest`).
 
+## Qualité : couverture et mutation
+
+**Couverture v8** (`npm run test:coverage`, tests unitaires) : `domain` 100 % ; `application` ≈ 99 % des lignes.
+Une couverture de 100 % prouve seulement que chaque ligne a été **exécutée**, pas qu'un test **vérifie** son résultat :
+`pricing.ts` était couvert à 100 % avec un score de mutation de 87,5 %.
+
+**Mutation sur le moteur de prix** (`npm run test:mutate:prix` : `pricing.ts`, `birthday.ts`, `money.ts`, `location.ts`) :
+
+| | Score | Tués | Survivants |
+|---|---|---|---|
+| Avant la carte Qualité | 88,7 % | 118 | 15 |
+| Après | **94,7 %** | 126 | 7 |
+
+Survivants traités (8), par un test ou un réglage :
+- Le fuseau du calcul d'anniversaire pouvait être supprimé sans qu'aucun test échoue, parce que la machine était déjà
+  à l'heure de Paris → les tests unitaires tournent désormais à New York.
+- Noël : « le 24 » pouvait devenir « n'importe quel jour de décembre » le soir → test du 23/12 à 20h00.
+- Années bissextiles : la règle des 400 ans n'était pas testée → test de l'an 2400.
+- 29 février : « né le 29 » et « on est le 28 » n'étaient pas vérifiés séparément → deux tests.
+- `Money.cents` : le message d'erreur n'était pas vérifié → assertion sur le message.
+
+Survivants expliqués (7), sans test à ajouter :
+- **6 mutants « statiques »** sur la constante `PARIS_CLOCK` (`pricing.ts`, options de `Intl.DateTimeFormat`) :
+  la constante est évaluée une seule fois au chargement du module, donc Stryker ne peut pas activer ces mutants pendant les
+  tests. Vérifié à la main : remplacer `Europe/Paris` par `UTC` fait échouer 10 tests, `h23` par `h12` en fait échouer 8.
+- **1 mutant équivalent** : `parts.find(…)?.value` → `parts.find(…).value`. `formatToParts` renvoie toujours le mois,
+  le jour et l'heure demandés : les deux versions se comportent pareil. Le `?.` est là pour le typage.
+
 ## Décisions de spec
 
-À reporter depuis le board du projet une fois tranchées.
+Chaque décision a été tranchée sur le board, puis figée par au moins un test.
 
+- **d1 — Prix hors de Paris (Story 1)** : Extérieur → Extérieur = **10 €** de base + 0,50 €/km, comme Paris → Extérieur.
+- **d2 — Ordre des majorations** : prix de base + km, puis **heures de pointe ×1,5**, puis **Noël ×2**, puis **UberX +5 €**
+  (supplément fixe, jamais majoré). Test : trajet à 20 €, le 25/12 à 18h30, en UberX → 20 × 1,5 × 2 + 5 = **65 €**.
+- **d3 — Noël (Story 5)** : du **24/12 18h00 au 25/12 23h59**, heure de Paris. Tests aux limites : 24/12 17h59 → normal,
+  24/12 18h00 → ×2, 25/12 23h59 → ×2, 26/12 00h00 → normal.
+- **d4 — Fuseau horaire** : toutes les règles de date (Noël, heures de pointe, anniversaire) se jugent en **heure de Paris**.
+  Un Rider né le 29 février fête son anniversaire le 28 février les années non bissextiles.
+- **d6 — Débit** : le prix est **débité à la réservation** (solde comparé au prix tous modificateurs inclus) et remboursé
+  à l'annulation, moins l'éventuelle pénalité. Le solde ne peut pas devenir négatif.
 - **d5 — Annulation (Story 2)** : PENDING → annulation gratuite ; ASSIGNED (Driver « en chemin ») → 5 € de pénalité,
   offerte le jour de l'anniversaire du Rider (heure de Paris, d4) ; IN_PROGRESS / COMPLETED → `RIDE_CANNOT_BE_CANCELLED` ;
   CANCELLED → `RIDE_ALREADY_CANCELLED`. Le prix débité à la réservation (d6) est remboursé, moins la pénalité éventuelle.
