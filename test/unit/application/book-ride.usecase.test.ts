@@ -2,6 +2,7 @@ import { inParis } from "@test/builders/location";
 import { aRide } from "@test/builders/ride.builder";
 import { aRider } from "@test/builders/rider.builder";
 import { InMemoryRideRepository } from "@test/doubles/in-memory-ride.repository";
+import { InMemoryRideEstimateRepository } from "@test/doubles/in-memory-ride-estimate.repository";
 import { InMemoryRiderRepository } from "@test/doubles/in-memory-rider.repository";
 import { InMemoryUnitOfWork } from "@test/doubles/in-memory-unit-of-work";
 import { StubClock } from "@test/doubles/stub-clock";
@@ -28,7 +29,11 @@ describe("Story 1 : réserver une course", () => {
 		distanceGateway = new StubDistanceGateway({ from: inParis(), to: inParis(), distanceKm: 10 });
 		clock = StubClock.at(NOW);
 		bookRide = new BookRideUseCase(
-			new InMemoryUnitOfWork({ riders: riderRepository, rides: rideRepository }),
+			new InMemoryUnitOfWork({
+				riders: riderRepository,
+				rides: rideRepository,
+				estimates: new InMemoryRideEstimateRepository(),
+			}),
 			distanceGateway,
 			new StubIdGenerator("ride-1"),
 			clock,

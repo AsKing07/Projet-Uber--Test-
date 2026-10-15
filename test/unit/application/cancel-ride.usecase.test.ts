@@ -1,6 +1,7 @@
 import { aRide } from "@test/builders/ride.builder";
 import { aRider } from "@test/builders/rider.builder";
 import { InMemoryRideRepository } from "@test/doubles/in-memory-ride.repository";
+import { InMemoryRideEstimateRepository } from "@test/doubles/in-memory-ride-estimate.repository";
 import { InMemoryRiderRepository } from "@test/doubles/in-memory-rider.repository";
 import { InMemoryUnitOfWork } from "@test/doubles/in-memory-unit-of-work";
 import { StubClock } from "@test/doubles/stub-clock";
@@ -24,7 +25,11 @@ describe("Story 2 : annuler une course", () => {
 		rideRepository = new InMemoryRideRepository();
 		clock = StubClock.at(NOT_BIRTHDAY);
 		cancelRide = new CancelRideUseCase(
-			new InMemoryUnitOfWork({ riders: riderRepository, rides: rideRepository }),
+			new InMemoryUnitOfWork({
+				riders: riderRepository,
+				rides: rideRepository,
+				estimates: new InMemoryRideEstimateRepository(),
+			}),
 			clock,
 		);
 	});

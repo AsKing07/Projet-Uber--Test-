@@ -1,156 +1,100 @@
-import express from "express";
+import { aRider } from "@test/builders/rider.builder";
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
-import { BookRideUseCase } from "@/application/book-ride.usecase";
-import { EstimateRidePriceUseCase } from "@/application/estimate-ride-price.usecase";
-import type { RideEstimate, RideEstimateRepository } from "@/application/ports/ride-estimate.repository";
 import { Money } from "@/domain/money";
-import { InMemoryRideRepository } from "@test/doubles/in-memory-ride.repository";
-import { InMemoryRiderRepository } from "@test/doubles/in-memory-rider.repository";
-import { InMemoryUnitOfWork } from "@test/doubles/in-memory-unit-of-work";
-import { StubClock } from "@test/doubles/stub-clock";
-import { StubDistanceGateway } from "@test/doubles/stub-distance.gateway";
-import { StubIdGenerator } from "@test/doubles/stub-id-generator";
-import { aRider } from "@test/builders/rider.builder";
+import { createInMemoryApp } from "./support/in-memory-app";
 
-class InMemoryRideEstimateRepository implements RideEstimateRepository {
-	private readonly estimates = new Map<string, RideEstimate>();
-
-	async save(estimate: RideEstimate): Promise<void> {
-		this.estimates.set(estimate.token, estimate);
-	}
-
-	async findByToken(token: string): Promise<RideEstimate | undefined> {
-		return this.estimates.get(token);
-	}
-
-	async markUsed(token: string, usedAt: Date): Promise<void> {
-		const estimate = this.estimates.get(token);
-		if (estimate) {
-			this.estimates.set(token, { ...estimate, usedAt });
-		}
-	}
-}
-
+/** E2E Story 11 (Supertest, sur des fakes) : estimer, puis réserver au prix garanti. */
 describe("API : estimation du prix avant réservation", () => {
-	let riderRepository: InMemoryRiderRepository;
-	let rideRepository: InMemoryRideRepository;
-	let estimateRepository: InMemoryRideEstimateRepository;
-	let clock: StubClock;
-	let distanceGateway: StubDistanceGateway;
-	let app: express.Express;
+	let api: ReturnType<typeof createInMemoryApp>;
 
-	beforeEach(() => {
-		riderRepository = new InMemoryRiderRepository();
-		rideRepository = new InMemoryRideRepository();
-		estimateRepository = new InMemoryRideEstimateRepository();
-		clock = StubClock.at("2026-03-10T12:00:00+01:00");
-		distanceGateway = new StubDistanceGateway({
-			from: { address: "10 rue de Rivoli", city: "Paris" },
-			to: { address: "Lyon", city: "Lyon" },
-			distanceKm: 10,
-		});
+	// Mêmes adresses que le trajet du StubDistanceGateway : le token garantit CE trajet
+	const ride = {
+		riderId: "rider-1",
+		fromAddress: "10 rue de Rivoli, Paris",
+		toAddress: "5 avenue de l'Opéra, Paris",
+	};
+	const estimate = (body: object = ride) => request(api.app).post("/rides/estimate").send(body);
+	const book = (body: object) => request(api.app).post("/rides").send(body);
 
-		const estimateUseCase = new EstimateRidePriceUseCase(
-			riderRepository,
-			distanceGateway,
-			clock,
-			new StubIdGenerator("estimate-1"),
-			estimateRepository,
-		);
-		const bookRideUseCase = new BookRideUseCase(
-			new InMemoryUnitOfWork({ riders: riderRepository, rides: rideRepository }),
-			distanceGateway,
-			new StubIdGenerator("ride-1"),
-			clock,
-			estimateRepository,
-		);
-
-		app = express();
-		app.use(express.json());
-		app.post("/rides/estimate", async (req, res) => {
-			try {
-				const result = await estimateUseCase.handle(req.body);
-				return res.status(200).json(result);
-			} catch (error) {
-				const message = error instanceof Error ? error.message : "Erreur inconnue";
-				return res.status(404).json({ error: message });
-			}
-		});
-		app.post("/rides", async (req, res) => {
-			try {
-				const ride = await bookRideUseCase.handle(req.body);
-				return res.status(201).json(ride);
-			} catch (error) {
-				if (error instanceof Error && "code" in error) {
-					const domainError = error as { code: string; message: string };
-					if (domainError.code === "ESTIMATE_EXPIRED") return res.status(409).json({ code: domainError.code, message: domainError.message });
-					if (domainError.code === "ESTIMATE_ALREADY_USED") return res.status(409).json({ code: domainError.code, message: domainError.message });
-					if (domainError.code === "ESTIMATE_NOT_FOUND") return res.status(400).json({ code: domainError.code, message: domainError.message });
-				}
-				const message = error instanceof Error ? error.message : "Erreur inconnue";
-				return res.status(500).json({ error: message });
-			}
-		});
+	beforeEach(async () => {
+		api = createInMemoryApp();
+		await api.riderRepository.save(aRider().withId("rider-1").withBalance(Money.euros(50)).build());
 	});
 
-	it("renvoie un token puis autorise la réservation avec ce token", async () => {
-		await riderRepository.save(aRider().withId("rider-1").withBalance(Money.euros(100)).build());
+	describe("POST /rides/estimate", () => {
+		it("201 + le prix en euros, le token et la date d'expiration", async () => {
+			const response = await estimate();
 
-		const estimateResponse = await request(app)
-			.post("/rides/estimate")
-			.send({ riderId: "rider-1", fromAddress: "10 rue de Rivoli", toAddress: "Lyon" })
-			.expect(200);
-
-		expect(estimateResponse.body).toMatchObject({
-			token: "estimate-1",
-			riderId: "rider-1",
-			distanceKm: 10,
-		});
-		expect(estimateResponse.body.price).toEqual(Money.euros(15));
-
-		const bookingResponse = await request(app)
-			.post("/rides")
-			.send({
-				riderId: "rider-1",
-				fromAddress: "10 rue de Rivoli",
-				toAddress: "Lyon",
-				estimateToken: estimateResponse.body.token,
-			})
-			.expect(201);
-
-		expect(bookingResponse.body.price).toEqual(Money.euros(15));
-		expect(bookingResponse.body.status).toBe("PENDING");
-		expect((await estimateRepository.findByToken(estimateResponse.body.token))?.usedAt).toBeInstanceOf(Date);
-	});
-
-	it("refuse la réservation si le token a expiré", async () => {
-		await riderRepository.save(aRider().withId("rider-1").withBalance(Money.euros(100)).build());
-		await estimateRepository.save({
-			token: "expired-token",
-			riderId: "rider-1",
-			route: {
-				from: { address: "10 rue de Rivoli", city: "Paris" },
-				to: { address: "Lyon", city: "Lyon" },
+			expect(response.status).toBe(201);
+			expect(response.body).toEqual({
+				token: "estimate-1",
+				from: { address: "10 rue de Rivoli, Paris", city: "Paris" },
+				to: { address: "5 avenue de l'Opéra, Paris", city: "Paris" },
 				distanceKm: 10,
-			},
-			options: { uberX: false },
-			price: Money.euros(15),
-			createdAt: new Date("2026-03-10T11:00:00+01:00"),
-			expiresAt: new Date("2026-03-10T11:59:59+01:00"),
-			usedAt: null,
+				price: 7,
+				uberX: false,
+				expiresAt: "2026-03-10T11:05:00.000Z",
+			});
 		});
 
-		const response = await request(app)
-			.post("/rides")
-			.send({
-				riderId: "rider-1",
-				fromAddress: "10 rue de Rivoli",
-				toAddress: "Lyon",
-				estimateToken: "expired-token",
-			})
-			.expect(409);
+		it("400 si une adresse manque", async () => {
+			const response = await estimate({ riderId: "rider-1", fromAddress: "10 rue de Rivoli" });
 
-		expect(response.body.code).toBe("ESTIMATE_EXPIRED");
+			expect(response.status).toBe(400);
+			expect(response.body.code).toBe("INVALID_REQUEST");
+		});
+
+		it("404 pour un Rider inconnu", async () => {
+			const response = await estimate({ ...ride, riderId: "inconnu" });
+
+			expect(response.status).toBe(404);
+			expect(response.body.code).toBe("RIDER_NOT_FOUND");
+		});
+	});
+
+	describe("POST /rides avec estimateToken", () => {
+		it("201 : réserve au prix estimé et consomme le token", async () => {
+			await estimate();
+
+			const response = await book({ ...ride, estimateToken: "estimate-1" });
+
+			expect(response.status).toBe(201);
+			expect(response.body).toMatchObject({ price: 7, status: "PENDING" });
+			expect((await api.estimateRepository.findByToken("estimate-1"))?.usedAt).not.toBeNull();
+		});
+
+		it("404 pour un token inconnu", async () => {
+			const response = await book({ ...ride, estimateToken: "inconnu" });
+
+			expect(response.status).toBe(404);
+			expect(response.body.code).toBe("ESTIMATE_NOT_FOUND");
+		});
+
+		it("409 si le token a expiré", async () => {
+			await estimate();
+			api.clock.setNow("2026-03-10T12:05:00+01:00");
+
+			const response = await book({ ...ride, estimateToken: "estimate-1" });
+
+			expect(response.status).toBe(409);
+			expect(response.body.code).toBe("ESTIMATE_EXPIRED");
+		});
+
+		it("409 si la course demandée n'est pas celle estimée", async () => {
+			await estimate();
+
+			const response = await book({ ...ride, uberX: true, estimateToken: "estimate-1" });
+
+			expect(response.status).toBe(409);
+			expect(response.body.code).toBe("ESTIMATE_MISMATCH");
+		});
+
+		it("400 si le token n'est pas un texte", async () => {
+			const response = await book({ ...ride, estimateToken: 42 });
+
+			expect(response.status).toBe(400);
+			expect(response.body.code).toBe("INVALID_REQUEST");
+		});
 	});
 });

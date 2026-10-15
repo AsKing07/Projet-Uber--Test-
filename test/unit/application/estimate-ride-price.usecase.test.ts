@@ -1,117 +1,84 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { BookRideUseCase } from "@/application/book-ride.usecase";
-import { EstimateRidePriceUseCase } from "@/application/estimate-ride-price.usecase";
-import type { RideEstimate, RideEstimateRepository } from "@/application/ports/ride-estimate.repository";
-import { Money } from "@/domain/money";
-import { InMemoryRideRepository } from "@test/doubles/in-memory-ride.repository";
+import { aRider } from "@test/builders/rider.builder";
+import { InMemoryRideEstimateRepository } from "@test/doubles/in-memory-ride-estimate.repository";
 import { InMemoryRiderRepository } from "@test/doubles/in-memory-rider.repository";
-import { InMemoryUnitOfWork } from "@test/doubles/in-memory-unit-of-work";
 import { StubClock } from "@test/doubles/stub-clock";
 import { StubDistanceGateway } from "@test/doubles/stub-distance.gateway";
 import { StubIdGenerator } from "@test/doubles/stub-id-generator";
-import { aRider } from "@test/builders/rider.builder";
+import { beforeEach, describe, expect, it } from "vitest";
+import { EstimateRidePriceUseCase } from "@/application/estimate-ride-price.usecase";
+import { Money } from "@/domain/money";
 
-class InMemoryRideEstimateRepository implements RideEstimateRepository {
-	private readonly estimates = new Map<string, RideEstimate>();
-
-	async save(estimate: RideEstimate): Promise<void> {
-		this.estimates.set(estimate.token, estimate);
-	}
-
-	async findByToken(token: string): Promise<RideEstimate | undefined> {
-		return this.estimates.get(token);
-	}
-
-	async markUsed(token: string, usedAt: Date): Promise<void> {
-		const estimate = this.estimates.get(token);
-		if (estimate) {
-			this.estimates.set(token, { ...estimate, usedAt });
-		}
-	}
-}
-
-describe("Story 11 : estimation du prix avant réservation", () => {
+describe("Story 11 : estimer le prix avant de réserver", () => {
 	let riderRepository: InMemoryRiderRepository;
-	let rideRepository: InMemoryRideRepository;
 	let estimateRepository: InMemoryRideEstimateRepository;
-	let clock: StubClock;
-	let distanceGateway: StubDistanceGateway;
-	let estimateUseCase: EstimateRidePriceUseCase;
+	let estimateRidePrice: EstimateRidePriceUseCase;
+
+	const PARIS_TO_LYON = {
+		from: { address: "10 rue de Rivoli", city: "Paris" },
+		to: { address: "Place Bellecour", city: "Lyon" },
+		distanceKm: 10,
+	};
 
 	beforeEach(() => {
 		riderRepository = new InMemoryRiderRepository();
-		rideRepository = new InMemoryRideRepository();
 		estimateRepository = new InMemoryRideEstimateRepository();
-		clock = StubClock.at("2026-03-10T12:00:00+01:00");
-		distanceGateway = new StubDistanceGateway({
-			from: { address: "10 rue de Rivoli", city: "Paris" },
-			to: { address: "Lyon", city: "Lyon" },
-			distanceKm: 10,
-		});
-		estimateUseCase = new EstimateRidePriceUseCase(
+		estimateRidePrice = new EstimateRidePriceUseCase(
 			riderRepository,
-			distanceGateway,
-			clock,
+			new StubDistanceGateway(PARIS_TO_LYON),
+			StubClock.at("2026-03-10T12:00:00+01:00"),
 			new StubIdGenerator("estimate-1"),
 			estimateRepository,
 		);
 	});
 
-	it("génère un token, stocke l'estimation et renvoie le prix et l'expiration", async () => {
-		await riderRepository.save(aRider().withId("rider-1").withBalance(Money.euros(100)).build());
-
-		const result = await estimateUseCase.handle({
+	const estimate = (uberX?: boolean) =>
+		estimateRidePrice.handle({
 			riderId: "rider-1",
 			fromAddress: "10 rue de Rivoli",
-			toAddress: "Lyon",
+			toAddress: "Place Bellecour",
+			uberX,
 		});
 
-		expect(result.token).toBe("estimate-1");
-		expect(result.riderId).toBe("rider-1");
-		expect(result.distanceKm).toBe(10);
+	it("calcule le prix de la course comme une réservation faite maintenant", async () => {
+		await riderRepository.save(aRider().withId("rider-1").build());
+
+		const result = await estimate();
+
+		// Paris → extérieur : 10 € + 10 km × 0,50 € = 15 €
 		expect(result.price).toEqual(Money.euros(15));
-		expect(result.expiresAt.getTime() - clock.getNow().getTime()).toBe(5 * 60 * 1000);
+	});
+
+	it("inclut le supplément UberX quand il est demandé", async () => {
+		await riderRepository.save(aRider().withId("rider-1").build());
+
+		const result = await estimate(true);
+
+		// 15 € + 5 € de supplément UberX
+		expect(result.price).toEqual(Money.euros(20));
+		expect(result.options).toEqual({ uberX: true });
+	});
+
+	it("garantit le prix 5 minutes", async () => {
+		await riderRepository.save(aRider().withId("rider-1").build());
+
+		const result = await estimate();
+
+		expect(result.expiresAt).toEqual(new Date("2026-03-10T12:05:00+01:00"));
+	});
+
+	it("enregistre l'estimation, non utilisée, sous son token", async () => {
+		await riderRepository.save(aRider().withId("rider-1").build());
+
+		await estimate();
+
 		expect(await estimateRepository.findByToken("estimate-1")).toMatchObject({
-			token: "estimate-1",
 			riderId: "rider-1",
+			route: PARIS_TO_LYON,
 			usedAt: null,
 		});
 	});
 
-	it("refuse une estimation pour un Rider inconnu", async () => {
-		await expect(
-			estimateUseCase.handle({
-				riderId: "unknown-rider",
-				fromAddress: "10 rue de Rivoli",
-				toAddress: "Lyon",
-			}),
-		).rejects.toMatchObject({ code: "RIDER_NOT_FOUND" });
-	});
-
-	it("la réservation avec token valide utilise le prix garanti et marque le token comme utilisé", async () => {
-		await riderRepository.save(aRider().withId("rider-1").withBalance(Money.euros(50)).build());
-		const estimate = await estimateUseCase.handle({
-			riderId: "rider-1",
-			fromAddress: "10 rue de Rivoli",
-			toAddress: "Lyon",
-		});
-
-		const bookRide = new BookRideUseCase(
-			new InMemoryUnitOfWork({ riders: riderRepository, rides: rideRepository }),
-			distanceGateway,
-			new StubIdGenerator("ride-1"),
-			clock,
-			estimateRepository,
-		);
-
-		const ride = await bookRide.handle({
-			riderId: "rider-1",
-			fromAddress: "10 rue de Rivoli",
-			toAddress: "Lyon",
-			estimateToken: estimate.token,
-		});
-
-		expect(ride.price).toEqual(Money.euros(15));
-		expect((await estimateRepository.findByToken(estimate.token))?.usedAt).toBeInstanceOf(Date);
+	it("refuse d'estimer pour un Rider inconnu", async () => {
+		await expect(estimate()).rejects.toMatchObject({ code: "RIDER_NOT_FOUND" });
 	});
 });

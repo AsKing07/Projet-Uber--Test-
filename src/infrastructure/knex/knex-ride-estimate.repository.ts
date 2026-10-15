@@ -1,5 +1,8 @@
 import type { Knex } from "knex";
-import type { RideEstimate, RideEstimateRepository } from "@/application/ports/ride-estimate.repository";
+import type {
+	RideEstimate,
+	RideEstimateRepository,
+} from "@/application/ports/ride-estimate.repository";
 import { Money } from "@/domain/money";
 
 type RideEstimateRow = {
@@ -48,10 +51,11 @@ const toEstimate = (row: RideEstimateRow): RideEstimate => ({
 });
 
 export class KnexRideEstimateRepository implements RideEstimateRepository {
+	/** `connection` peut être une transaction : le token est alors consommé dans la même transaction que la réservation. */
 	constructor(private readonly connection: Knex) {}
 
 	async save(estimate: RideEstimate): Promise<void> {
-		await this.connection("ride_estimates").insert(toRow(estimate)).onConflict("token").merge();
+		await this.connection("ride_estimates").insert(toRow(estimate));
 	}
 
 	async findByToken(token: string): Promise<RideEstimate | undefined> {
@@ -59,7 +63,13 @@ export class KnexRideEstimateRepository implements RideEstimateRepository {
 		return row ? toEstimate(row) : undefined;
 	}
 
-	async markUsed(token: string, usedAt: Date): Promise<void> {
-		await this.connection("ride_estimates").where({ token }).update({ used_at: usedAt });
+	async markUsed(token: string, usedAt: Date): Promise<boolean> {
+		// UPDATE … WHERE used_at IS NULL : PostgreSQL verrouille la ligne, la 2e réservation simultanée
+		// attend la 1re puis ne trouve plus de ligne à mettre à jour (0 ligne → false)
+		const updatedRows = await this.connection("ride_estimates")
+			.where({ token })
+			.whereNull("used_at")
+			.update({ used_at: usedAt });
+		return updatedRows === 1;
 	}
 }

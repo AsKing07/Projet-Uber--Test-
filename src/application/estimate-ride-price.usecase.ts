@@ -6,6 +6,9 @@ import type { IdGenerator } from "./ports/id-generator";
 import type { RideEstimate, RideEstimateRepository } from "./ports/ride-estimate.repository";
 import type { RiderRepository } from "./ports/rider.repository";
 
+/** Décision de spec d10 : un prix estimé est garanti 5 minutes. */
+export const ESTIMATE_VALIDITY_MS = 5 * 60 * 1000;
+
 export type EstimateRidePriceCommand = {
 	riderId: string;
 	fromAddress: string;
@@ -13,14 +16,7 @@ export type EstimateRidePriceCommand = {
 	uberX?: boolean;
 };
 
-export type EstimatedRidePrice = {
-	token: string;
-	riderId: string;
-	distanceKm: number;
-	price: ReturnType<typeof calculateRidePrice>;
-	expiresAt: Date;
-};
-
+/** Story 11 : le Rider voit le prix avant de réserver ; ce prix lui est garanti par un token. */
 export class EstimateRidePriceUseCase {
 	constructor(
 		private readonly riderRepository: RiderRepository,
@@ -30,7 +26,7 @@ export class EstimateRidePriceUseCase {
 		private readonly rideEstimateRepository: RideEstimateRepository,
 	) {}
 
-	async handle(command: EstimateRidePriceCommand): Promise<EstimatedRidePrice> {
+	async handle(command: EstimateRidePriceCommand): Promise<RideEstimate> {
 		const rider = await this.riderRepository.findById(command.riderId);
 		if (!rider) {
 			throw new DomainError("RIDER_NOT_FOUND", `Rider ${command.riderId} introuvable`);
@@ -39,32 +35,19 @@ export class EstimateRidePriceUseCase {
 		const route = await this.distanceGateway.getRoute(command.fromAddress, command.toAddress);
 		const options = { uberX: command.uberX ?? false };
 		const now = this.clock.getNow();
-		const price = calculateRidePrice({
-			route,
-			at: now,
-			options,
-			riderBirthDate: rider.birthDate,
-		});
-		const token = this.idGenerator.generate();
-		const expiresAt = new Date(now.getTime() + 5 * 60 * 1000);
 		const estimate: RideEstimate = {
-			token,
+			token: this.idGenerator.generate(),
 			riderId: rider.id,
 			route,
 			options,
-			price,
+			// Même calcul que la réservation : l'estimation est le prix qu'il paierait maintenant
+			price: calculateRidePrice({ route, at: now, options, riderBirthDate: rider.birthDate }),
 			createdAt: now,
-			expiresAt,
+			expiresAt: new Date(now.getTime() + ESTIMATE_VALIDITY_MS),
 			usedAt: null,
 		};
 
 		await this.rideEstimateRepository.save(estimate);
-		return {
-			token,
-			riderId: rider.id,
-			distanceKm: route.distanceKm,
-			price,
-			expiresAt,
-		};
+		return estimate;
 	}
 }

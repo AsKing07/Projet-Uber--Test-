@@ -1,10 +1,12 @@
 import type { RideRepository } from "./ride.repository";
+import type { RideEstimateRepository } from "./ride-estimate.repository";
 import type { RiderRepository } from "./rider.repository";
 
 /** Les repositories utilisables à l'intérieur d'une unité de travail. */
 export type TransactionalRepositories = {
 	riders: RiderRepository;
 	rides: RideRepository;
+	estimates: RideEstimateRepository;
 };
 
 /**

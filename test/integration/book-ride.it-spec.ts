@@ -8,6 +8,7 @@ import { BookRideUseCase } from "@/application/book-ride.usecase";
 import type { UnitOfWork } from "@/application/ports/unit-of-work";
 import { Money } from "@/domain/money";
 import { KnexRideRepository } from "@/infrastructure/knex/knex-ride.repository";
+import { KnexRideEstimateRepository } from "@/infrastructure/knex/knex-ride-estimate.repository";
 import { KnexRiderRepository } from "@/infrastructure/knex/knex-rider.repository";
 import { KnexUnitOfWork } from "@/infrastructure/knex/knex-unit-of-work";
 import { resetDatabase, startTestDatabase, type TestDatabase } from "./support/database";
@@ -69,7 +70,11 @@ describe("Bonus : réservation et point de fidélité dans une transaction (int�
 			riders.save = async () => {
 				throw new Error("Panne simulée pendant l'ajout du point de fidélité");
 			};
-			return { riders, rides: new KnexRideRepository(transaction) };
+			return {
+				riders,
+				rides: new KnexRideRepository(transaction),
+				estimates: new KnexRideEstimateRepository(transaction),
+			};
 		};
 
 		await expect(
@@ -81,5 +86,54 @@ describe("Bonus : réservation et point de fidélité dans une transaction (int�
 		const rider = await riderRepository.findById("rider-1");
 		expect(rider?.balance).toEqual(Money.euros(50));
 		expect(rider?.loyaltyPoints).toBe(3);
+	});
+
+	it("Story 11 : si la réservation au prix estimé échoue, le token n'est pas consommé", async () => {
+		await new KnexRideEstimateRepository(database.connection).save({
+			token: "estimate-1",
+			riderId: "rider-1",
+			route: {
+				from: { address: "10 rue de Rivoli", city: "Paris" },
+				to: { address: "5 avenue de l'Opéra", city: "Paris" },
+				distanceKm: 10,
+			},
+			options: { uberX: false },
+			price: Money.euros(7),
+			createdAt: new Date("2026-03-10T11:59:00+01:00"),
+			expiresAt: new Date("2026-03-10T12:04:00+01:00"),
+			usedAt: null,
+		});
+		// Panne en toute fin de réservation, APRÈS la consommation du token : le ROLLBACK doit l'annuler aussi
+		const failingRiderSave = (transaction: Knex.Transaction) => {
+			const riders = new KnexRiderRepository(transaction);
+			riders.save = async () => {
+				throw new Error("Panne simulée pendant le débit du Rider");
+			};
+			return {
+				riders,
+				rides: new KnexRideRepository(transaction),
+				estimates: new KnexRideEstimateRepository(transaction),
+			};
+		};
+
+		await expect(
+			new BookRideUseCase(
+				new KnexUnitOfWork(database.connection, failingRiderSave),
+				new StubDistanceGateway(),
+				new StubIdGenerator("ride-1"),
+				StubClock.at("2026-03-10T12:00:00+01:00"),
+			).handle({
+				riderId: "rider-1",
+				fromAddress: "10 rue de Rivoli",
+				toAddress: "5 avenue de l'Opéra",
+				estimateToken: "estimate-1",
+			}),
+		).rejects.toThrow("Panne simulée");
+
+		const estimate = await new KnexRideEstimateRepository(database.connection).findByToken(
+			"estimate-1",
+		);
+		expect(estimate?.usedAt).toBeNull();
+		expect(await rideRepository.findByRiderId("rider-1")).toEqual([]);
 	});
 });
