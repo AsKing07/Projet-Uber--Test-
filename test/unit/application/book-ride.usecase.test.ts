@@ -3,6 +3,7 @@ import { aRide } from "@test/builders/ride.builder";
 import { aRider } from "@test/builders/rider.builder";
 import { InMemoryRideRepository } from "@test/doubles/in-memory-ride.repository";
 import { InMemoryRiderRepository } from "@test/doubles/in-memory-rider.repository";
+import { InMemoryUnitOfWork } from "@test/doubles/in-memory-unit-of-work";
 import { StubClock } from "@test/doubles/stub-clock";
 import { StubDistanceGateway } from "@test/doubles/stub-distance.gateway";
 import { StubIdGenerator } from "@test/doubles/stub-id-generator";
@@ -15,6 +16,7 @@ describe("Story 1 : réserver une course", () => {
 	let riderRepository: InMemoryRiderRepository;
 	let rideRepository: InMemoryRideRepository;
 	let distanceGateway: StubDistanceGateway;
+	let clock: StubClock;
 	let bookRide: BookRideUseCase;
 
 	const NOW = "2026-03-10T12:00:00+01:00";
@@ -24,12 +26,12 @@ describe("Story 1 : réserver une course", () => {
 		rideRepository = new InMemoryRideRepository();
 		// Paris → Paris, 10 km : 2 € + 10 × 0,50 € = 7 €
 		distanceGateway = new StubDistanceGateway({ from: inParis(), to: inParis(), distanceKm: 10 });
+		clock = StubClock.at(NOW);
 		bookRide = new BookRideUseCase(
-			riderRepository,
-			rideRepository,
+			new InMemoryUnitOfWork({ riders: riderRepository, rides: rideRepository }),
 			distanceGateway,
 			new StubIdGenerator("ride-1"),
-			StubClock.at(NOW),
+			clock,
 		);
 	});
 
@@ -65,6 +67,25 @@ describe("Story 1 : réserver une course", () => {
 		await book();
 
 		expect((await riderRepository.findById("rider-1"))?.balance).toEqual(Money.euros(43));
+	});
+
+	describe("Bonus : fidélité", () => {
+		it("crédite un point de fidélité au Rider pour la course réservée", async () => {
+			await riderRepository.save(aRider().withId("rider-1").withLoyaltyPoints(3).build());
+
+			await book();
+
+			expect((await riderRepository.findById("rider-1"))?.loyaltyPoints).toBe(4);
+		});
+
+		it("ne crédite aucun point quand la réservation est refusée", async () => {
+			await riderRepository.save(
+				aRider().withId("rider-1").withBalance(Money.euros(1)).withLoyaltyPoints(3).build(),
+			);
+
+			await expect(book()).rejects.toMatchObject({ code: "INSUFFICIENT_FUNDS" });
+			expect((await riderRepository.findById("rider-1"))?.loyaltyPoints).toBe(3);
+		});
 	});
 
 	describe("fonds suffisants (valeurs limites autour du prix de 7 €)", () => {
@@ -110,5 +131,17 @@ describe("Story 1 : réserver une course", () => {
 
 	it("refuse la réservation d'un Rider inconnu", async () => {
 		await expect(book()).rejects.toMatchObject({ code: "RIDER_NOT_FOUND" });
+	});
+
+	describe("Story 5 : majoration de Noël", () => {
+		it("enregistre la course au prix doublé et débite ce montant, le 24/12 à 19h00", async () => {
+			clock.setNow("2026-12-24T19:00:00+01:00");
+			await riderRepository.save(aRider().withId("rider-1").withBalance(Money.euros(50)).build());
+
+			await book();
+
+			expect((await rideRepository.findById("ride-1"))?.price).toEqual(Money.euros(14));
+			expect((await riderRepository.findById("rider-1"))?.balance).toEqual(Money.euros(36));
+		});
 	});
 });

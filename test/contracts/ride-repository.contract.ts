@@ -26,6 +26,19 @@ export function rideRepositoryContract(
 			expect(await repository.findById("ride-1")).toEqual(ride);
 		});
 
+		it("conserve le Driver assigné et les options de la course", async () => {
+			const ride = aRide()
+				.withId("ride-1")
+				.withDriver("driver-1")
+				.withStatus("ASSIGNED")
+				.withUberX()
+				.build();
+
+			await repository.save(ride);
+
+			expect(await repository.findById("ride-1")).toEqual(ride);
+		});
+
 		it("renvoie undefined pour un id inconnu", async () => {
 			expect(await repository.findById("inconnu")).toBeUndefined();
 		});

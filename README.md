@@ -56,3 +56,10 @@ db/
 ## Décisions de spec
 
 À reporter depuis le board du projet une fois tranchées.
+
+- **d5 — Annulation (Story 2)** : PENDING → annulation gratuite ; ASSIGNED (Driver « en chemin ») → 5 € de pénalité,
+  offerte le jour de l'anniversaire du Rider (heure de Paris, d4) ; IN_PROGRESS / COMPLETED → `RIDE_CANNOT_BE_CANCELLED` ;
+  CANCELLED → `RIDE_ALREADY_CANCELLED`. Le prix débité à la réservation (d6) est remboursé, moins la pénalité éventuelle.
+  Statut et remboursement sont écrits dans une seule transaction (`UnitOfWork`).
+
+- **d7 — Bonus fidélité** : le point est crédité à la **réservation** (le sujet lie le point au booking : « si le point ne s'ajoute pas, le ride n'est pas sauvegardé »). Course, débit du solde et point sont écrits dans **une seule transaction** (`UnitOfWork`). L'annulation ne retire pas le point (hors périmètre).
