@@ -11,6 +11,7 @@ class RiderBuilder {
 		birthDate: "1998-06-15",
 		balance: Money.euros(100),
 		blockedDriverIds: [],
+		loyaltyPoints: 0,
 	};
 
 	withId(id: string) {
@@ -30,6 +31,11 @@ class RiderBuilder {
 
 	withBlockedDrivers(...driverIds: string[]) {
 		this.rider = { ...this.rider, blockedDriverIds: driverIds };
+		return this;
+	}
+
+	withLoyaltyPoints(loyaltyPoints: number) {
+		this.rider = { ...this.rider, loyaltyPoints };
 		return this;
 	}
 
