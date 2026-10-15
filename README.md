@@ -63,3 +63,8 @@ db/
   Statut et remboursement sont écrits dans une seule transaction (`UnitOfWork`).
 
 - **d7 — Bonus fidélité** : le point est crédité à la **réservation** (le sujet lie le point au booking : « si le point ne s'ajoute pas, le ride n'est pas sauvegardé »). Course, débit du solde et point sont écrits dans **une seule transaction** (`UnitOfWork`). L'annulation ne retire pas le point (hors périmètre).
+
+- **d9 — Assignation d'un Driver (Story 10)** : l'assignation se fait quand un Driver **accepte** une course PENDING
+  (`AcceptRideUseCase`) : la course passe à ASSIGNED avec son `driverId`. Pas d'algorithme d'attribution (hors périmètre).
+  Refus : Driver bloqué par le Rider → `DRIVER_BLOCKED` (règle `canBeAssignedTo`) ; course non PENDING → `RIDE_NOT_PENDING` ;
+  course, Driver ou Rider inconnu → `RIDE_NOT_FOUND` / `DRIVER_NOT_FOUND` / `RIDER_NOT_FOUND`.
