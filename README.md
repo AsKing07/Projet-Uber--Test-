@@ -57,8 +57,9 @@ db/
 
 | Route | Succès | Erreurs |
 |---|---|---|
-| `POST /rides/estimate` `{ riderId, fromAddress, toAddress, uberX? }` | 201 + `{ token, price, expiresAt, … }` | 400 `INVALID_REQUEST`, 404 `RIDER_NOT_FOUND` |
-| `POST /rides` `{ riderId, fromAddress, toAddress, uberX?, estimateToken? }` | 201 + la course | 400 `INVALID_REQUEST` / `INSUFFICIENT_FUNDS`, 404 `RIDER_NOT_FOUND` / `ESTIMATE_NOT_FOUND`, 409 `RIDE_ALREADY_PENDING` / `ESTIMATE_EXPIRED` / `ESTIMATE_ALREADY_USED` / `ESTIMATE_MISMATCH` |
+| `POST /rides/estimate` `{ riderId, fromAddress, toAddress, uberX? }` | 200 + `{ token, price, expiresAt, … }` | 400 `INVALID_REQUEST`, 404 `RIDER_NOT_FOUND` |
+| `POST /rides/book` `{ riderId, fromAddress, toAddress, uberX?, estimateToken? }` | 201 + la course | 400 `INVALID_REQUEST` / `INSUFFICIENT_FUNDS`, 404 `RIDER_NOT_FOUND` / `ESTIMATE_NOT_FOUND`, 409 `RIDE_ALREADY_PENDING` / `ESTIMATE_ALREADY_USED` / `ESTIMATE_MISMATCH`, 410 `ESTIMATE_EXPIRED` |
+| `POST /rides` `{ riderId, fromAddress, toAddress, uberX?, estimateToken? }` | 201 + la course | alias de compatibilité historique |
 | `POST /rides/:rideId/cancel` | 204 | 404 `RIDE_NOT_FOUND`, 409 `RIDE_ALREADY_CANCELLED` / `RIDE_CANNOT_BE_CANCELLED` |
 | `GET /riders/:riderId/rides` | 200 + l'historique | 404 `RIDER_NOT_FOUND` |
 
