@@ -1,4 +1,6 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+
+dotenv.config();
 import { createApp } from "./app";
 import { buildProductionDependencies } from "./dependencies";
 
