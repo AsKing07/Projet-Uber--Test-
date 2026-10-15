@@ -4,12 +4,19 @@ import type { DistanceGateway, Route } from "../../application/ports/distance.ga
 export class GoogleMapsScanner implements DistanceGateway {
 	private readonly client = new Client({});
 
-	constructor(private readonly apiKey: string) {}
+	constructor(private readonly apiKey: string) {
+		if (!apiKey) {
+			throw new Error("Google Maps API key is not set");
+		}
+	}
 
 	async getRoute(origin: string, destination: string): Promise<Route> {
-		const distanceMeters = await this.getDistance(origin, destination);
-		const fromCity = await this.getCity(origin);
-		const toCity = await this.getCity(destination);
+		// Les 3 appels sont indépendants : on les lance en parallèle
+		const [distanceMeters, fromCity, toCity] = await Promise.all([
+			this.getDistance(origin, destination),
+			this.getCity(origin),
+			this.getCity(destination),
+		]);
 
 		return {
 			from: { address: origin, city: fromCity },
@@ -19,10 +26,6 @@ export class GoogleMapsScanner implements DistanceGateway {
 	}
 
 	private async getDistance(origin: string, destination: string): Promise<number> {
-		if (!this.apiKey) {
-			throw new Error("Google Maps API key is not set");
-		}
-
 		const response = await this.client.distancematrix({
 			params: {
 				origins: [origin],
@@ -42,10 +45,6 @@ export class GoogleMapsScanner implements DistanceGateway {
 	}
 
 	private async getCity(address: string): Promise<string> {
-		if (!this.apiKey) {
-			throw new Error("Google Maps API key is not set");
-		}
-
 		const response = await this.client.geocode({
 			params: {
 				address,

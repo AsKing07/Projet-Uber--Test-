@@ -9,5 +9,6 @@ export default defineConfig({
 		testTimeout: 30_000,
 		hookTimeout: 120_000, // le premier démarrage de Docker peut être long
 		fileParallelism: false, // une seule base partagée : pas de fichiers en parallèle
+		setupFiles: ["dotenv/config"], // charge le .env (GOOGLE_MAPS_API_KEY) pour les tests de l'adapter Google
 	},
 });
