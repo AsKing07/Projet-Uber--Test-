@@ -32,8 +32,8 @@ export const estimateRidePriceController =
 			toAddress: requiredString(request.body, "toAddress"),
 			uberX: optionalBoolean(request.body, "uberX"),
 		});
-		// 201 : l'estimation est enregistrée (elle a un token et une date d'expiration)
-		response.status(201).json(toEstimateResponse(estimate));
+		// 200 : l'estimation est calculée et renvoyée au client pour validation avant réservation
+		response.status(200).json(toEstimateResponse(estimate));
 	};
 
 /** POST /rides/:rideId/cancel → 204 */
