@@ -10,6 +10,7 @@ type RiderRow = {
 	name: string;
 	birth_date: string;
 	balance_cents: number;
+	loyalty_points: number;
 };
 
 export class KnexRiderRepository implements RiderRepository {
@@ -29,6 +30,7 @@ export class KnexRiderRepository implements RiderRepository {
 			name: row.name,
 			birthDate: row.birth_date,
 			balance: Money.cents(row.balance_cents),
+			loyaltyPoints: row.loyalty_points,
 			blockedDriverIds: blocked,
 		};
 	}
@@ -41,6 +43,7 @@ export class KnexRiderRepository implements RiderRepository {
 				name: rider.name,
 				birth_date: rider.birthDate,
 				balance_cents: rider.balance.cents,
+				loyalty_points: rider.loyaltyPoints,
 			};
 			await trx("riders").insert(row).onConflict("id").merge();
 
