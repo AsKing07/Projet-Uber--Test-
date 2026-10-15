@@ -19,7 +19,9 @@
 		"db:up": "docker compose up -d"
 	},
 	"dependencies": {
+		"@googlemaps/google-maps-services-js": "^3.4.2",
 		"cors": "^2.8.5",
+		"dotenv": "^18.0.8",
 		"express": "^5.1.0",
 		"knex": "^3.1.0",
 		"pg": "^8.16.3"

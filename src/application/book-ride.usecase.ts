@@ -42,7 +42,15 @@ export class BookRideUseCase {
 				);
 			}
 
-			const price = calculateRidePrice(route);
+			const bookedAt = this.clock.getNow();
+			const options = { uberX: command.uberX ?? false };
+			const price = calculateRidePrice({
+				route,
+				at: bookedAt,
+				options,
+				riderBirthDate: rider.birthDate,
+			});
+
 			if (!rider.balance.isGreaterThanOrEqual(price)) {
 				throw new DomainError(
 					"INSUFFICIENT_FUNDS",
@@ -58,9 +66,9 @@ export class BookRideUseCase {
 				to: route.to,
 				distanceKm: route.distanceKm,
 				price,
-				options: { uberX: command.uberX ?? false },
+				options,
 				status: "PENDING",
-				bookedAt: this.clock.getNow(),
+				bookedAt,
 			};
 
 			await rides.save(ride);
