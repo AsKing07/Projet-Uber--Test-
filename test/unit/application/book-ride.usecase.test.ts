@@ -135,7 +135,7 @@ describe("Story 1 : réserver une course", () => {
 
 	describe("Story 5 : majoration de Noël", () => {
 		it("enregistre la course au prix doublé et débite ce montant, le 24/12 à 19h00", async () => {
-			clock.setNow("2026-12-24T19:00:00+01:00");
+			clock.setNow("2026-12-24T21:00:00+01:00");
 			await riderRepository.save(aRider().withId("rider-1").withBalance(Money.euros(50)).build());
 
 			await book();
@@ -171,6 +171,18 @@ describe("Story 1 : réserver une course", () => {
 			await bookUberX();
 
 			expect((await rideRepository.findById("ride-1"))?.price).toEqual(Money.euros(7));
+		});
+	});
+
+	describe("Story 9 : heures de pointe", () => {
+		it("enregistre la course majorée de 50 % et débite ce montant, à 8h30", async () => {
+			clock.setNow("2026-03-10T08:30:00+01:00");
+			await riderRepository.save(aRider().withId("rider-1").withBalance(Money.euros(50)).build());
+
+			await book();
+
+			expect((await rideRepository.findById("ride-1"))?.price).toEqual(Money.euros(10.5));
+			expect((await riderRepository.findById("rider-1"))?.balance).toEqual(Money.euros(39.5));
 		});
 	});
 });

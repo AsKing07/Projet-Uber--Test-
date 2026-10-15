@@ -40,9 +40,15 @@ function isChristmas(date: Date): boolean {
 	return month === 12 && ((day === 24 && hour >= 18) || day === 25);
 }
 
+/** Heures de pointe (Story 9), heure de Paris : [8h00, 9h00[ et [18h00, 20h00[. */
+function isRushHour(date: Date): boolean {
+	const { hour } = parisTime(date);
+	return (hour >= 8 && hour < 9) || (hour >= 18 && hour < 20);
+}
+
 /**
  * Prix d'une course = prix de base + 0,50 € par kilomètre.
- * Majorations, dans l'ordre de la décision d2 : Noël ×2, puis UberX +5 €. Heures de pointe à venir.
+ * Majorations, dans l'ordre de la décision d2 : heures de pointe ×1,5, puis Noël ×2, puis UberX +5 €.
  */
 export function calculateRidePrice(
 	route: Route,
@@ -51,7 +57,8 @@ export function calculateRidePrice(
 	riderBirthDate: string,
 ): Money {
 	const price = basePrice(route.from, route.to).add(PRICE_PER_KM.multiply(route.distanceKm));
-	const christmasPrice = isChristmas(date) ? price.multiply(2) : price;
+	const rushHourPrice = isRushHour(date) ? price.multiply(1.5) : price;
+	const christmasPrice = isChristmas(date) ? rushHourPrice.multiply(2) : rushHourPrice;
 	const uberXSurcharge = options.uberX && !isBirthday(riderBirthDate, date);
 	return uberXSurcharge ? christmasPrice.add(Money.euros(5)) : christmasPrice;
 }
