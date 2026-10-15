@@ -144,4 +144,33 @@ describe("Story 1 : réserver une course", () => {
 			expect((await riderRepository.findById("rider-1"))?.balance).toEqual(Money.euros(36));
 		});
 	});
+
+	describe("Story 6 : supplément UberX", () => {
+		const bookUberX = () =>
+			bookRide.handle({
+				riderId: "rider-1",
+				fromAddress: "10 rue de Rivoli",
+				toAddress: "5 avenue de l'Opéra",
+				uberX: true,
+			});
+
+		it("enregistre la course UberX à 12 € et débite ce montant", async () => {
+			await riderRepository.save(aRider().withId("rider-1").withBalance(Money.euros(50)).build());
+
+			await bookUberX();
+
+			expect((await rideRepository.findById("ride-1"))?.price).toEqual(Money.euros(12));
+			expect((await riderRepository.findById("rider-1"))?.balance).toEqual(Money.euros(38));
+		});
+
+		it("offre le supplément UberX le jour de l'anniversaire du Rider", async () => {
+			await riderRepository.save(
+				aRider().withId("rider-1").withBirthDate("2003-03-10").withBalance(Money.euros(50)).build(),
+			);
+
+			await bookUberX();
+
+			expect((await rideRepository.findById("ride-1"))?.price).toEqual(Money.euros(7));
+		});
+	});
 });

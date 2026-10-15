@@ -1,5 +1,7 @@
+import { isBirthday } from "./birthday";
 import { isInParis, type Location } from "./location";
 import { Money } from "./money";
+import type { RideOptions } from "./ride";
 import type { Route } from "./route";
 
 const PRICE_PER_KM = Money.euros(0.5);
@@ -40,9 +42,16 @@ function isChristmas(date: Date): boolean {
 
 /**
  * Prix d'une course = prix de base + 0,50 € par kilomètre.
- * Majorations: Noël (x2). UberX et heures de pointe à venir, dans l'ordre de la décision d2.
+ * Majorations, dans l'ordre de la décision d2 : Noël ×2, puis UberX +5 €. Heures de pointe à venir.
  */
-export function calculateRidePrice(route: Route, date: Date): Money {
+export function calculateRidePrice(
+	route: Route,
+	date: Date,
+	options: RideOptions,
+	riderBirthDate: string,
+): Money {
 	const price = basePrice(route.from, route.to).add(PRICE_PER_KM.multiply(route.distanceKm));
-	return isChristmas(date) ? price.multiply(2) : price;
+	const christmasPrice = isChristmas(date) ? price.multiply(2) : price;
+	const uberXSurcharge = options.uberX && !isBirthday(riderBirthDate, date);
+	return uberXSurcharge ? christmasPrice.add(Money.euros(5)) : christmasPrice;
 }
