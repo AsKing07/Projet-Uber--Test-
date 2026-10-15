@@ -78,18 +78,19 @@ describe("API des courses sur une vraie PostgreSQL", () => {
 			toAddress: "5 avenue de l'Opéra, Paris",
 		};
 		const estimated = await request(app).post("/rides/estimate").send(ride);
-		expect(estimated.status).toBe(201);
+		expect(estimated.status).toBe(200);
 		expect(estimated.body).toMatchObject({ token: "ride-1", price: 7 });
 
 		const booked = await request(app)
-			.post("/rides")
+			.post("/rides/book")
 			.send({ ...ride, estimateToken: estimated.body.token });
 		expect(booked.status).toBe(201);
 		expect(booked.body).toMatchObject({ id: "ride-2", price: 7 });
 
 		const reused = await request(app)
-			.post("/rides")
+			.post("/rides/book")
 			.send({ ...ride, estimateToken: estimated.body.token });
 		expect(reused.status).toBe(409);
+		expect(reused.body.code).toBe("ESTIMATE_ALREADY_USED");
 	});
 });
