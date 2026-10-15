@@ -71,13 +71,17 @@ export class GoogleMapsScanner implements DistanceGateway {
 	}
 
 	private async getCity(address: string): Promise<string> {
-		const response = await this.client.geocode({
-			params: {
-				address,
-				key: this.apiKey,
-				language: "fr",
-			},
-		});
+		const response = await this.client
+			.geocode({
+				params: {
+					address,
+					key: this.apiKey,
+					language: "fr",
+				},
+			})
+			.catch((error: unknown) => {
+				throw toGeocodingError(error);
+			});
 
 		const components = response.data.results[0]?.address_components ?? [];
 		const city = components.find((component) => component.types.includes(AddressType.locality));
@@ -88,4 +92,19 @@ export class GoogleMapsScanner implements DistanceGateway {
 
 		return city.long_name;
 	}
+}
+
+/**
+ * La librairie traduit les statuts Google en codes HTTP (REQUEST_DENIED → 403, OVER_QUERY_LIMIT → 429…)
+ * et lève une erreur axios muette (« Request failed with status code 403 »).
+ * On remonte le statut et le message de Google pour savoir tout de suite ce qui bloque (clé, quota, facturation).
+ */
+function toGeocodingError(error: unknown): Error {
+	const data = (error as { response?: { data?: { status?: string; error_message?: string } } })
+		.response?.data;
+	if (!data?.status) {
+		return error instanceof Error ? error : new Error(String(error));
+	}
+	const details = data.error_message ? ` – ${data.error_message}` : "";
+	return new Error(`Geocoding API : ${data.status}${details}`);
 }
