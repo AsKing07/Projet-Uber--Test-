@@ -16,10 +16,20 @@ function basePrice(from: Location, to: Location): Money {
 	return Money.euros(10);
 }
 
+function isChristmas(date: Date): boolean {
+	return date.getDate() === 25 && date.getMonth() === 11;
+}
+
 /**
  * Prix d'une course = prix de base + 0,50 € par kilomètre.
- * Les majorations (Noël, UberX, heures de pointe) s'ajouteront ici, dans l'ordre de la décision d2.
+ * Majorations: Noël (x2). UberX et heures de pointe à venir, dans l'ordre de la décision d2.
  */
-export function calculateRidePrice(route: Route): Money {
-	return basePrice(route.from, route.to).add(PRICE_PER_KM.multiply(route.distanceKm));
+export function calculateRidePrice(route: Route, date?: Date): Money {
+	let price = basePrice(route.from, route.to).add(PRICE_PER_KM.multiply(route.distanceKm));
+	
+	if (date && isChristmas(date)) {
+		price = price.multiply(2);
+	}
+	
+	return price;
 }
