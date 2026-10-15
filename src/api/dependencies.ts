@@ -1,12 +1,14 @@
 import knex, { type Knex } from "knex";
 import { BookRideUseCase } from "@/application/book-ride.usecase";
 import { CancelRideUseCase } from "@/application/cancel-ride.usecase";
+import { EstimateRidePriceUseCase } from "@/application/estimate-ride-price.usecase";
 import { GetRideHistoryUseCase } from "@/application/get-ride-history.usecase";
 import type { Clock } from "@/application/ports/clock";
 import type { DistanceGateway } from "@/application/ports/distance.gateway";
 import type { IdGenerator } from "@/application/ports/id-generator";
 import { KnexDriverRepository } from "@/infrastructure/knex/knex-driver.repository";
 import { KnexRideRepository } from "@/infrastructure/knex/knex-ride.repository";
+import { KnexRideEstimateRepository } from "@/infrastructure/knex/knex-ride-estimate.repository";
 import { KnexRiderRepository } from "@/infrastructure/knex/knex-rider.repository";
 import { KnexUnitOfWork } from "@/infrastructure/knex/knex-unit-of-work";
 import { GoogleMapsScanner } from "@/infrastructure/scanners/GoogleMapsScanner";
@@ -17,6 +19,7 @@ export type AppDependencies = {
 	bookRideUseCase: BookRideUseCase;
 	cancelRideUseCase: CancelRideUseCase;
 	getRideHistoryUseCase: GetRideHistoryUseCase;
+	estimateRidePriceUseCase: EstimateRidePriceUseCase;
 };
 
 export type Infrastructure = {
@@ -34,13 +37,21 @@ export function buildDependencies({
 	idGenerator,
 }: Infrastructure): AppDependencies {
 	const unitOfWork = new KnexUnitOfWork(connection);
+	const riderRepository = new KnexRiderRepository(connection);
 	return {
 		bookRideUseCase: new BookRideUseCase(unitOfWork, distanceGateway, idGenerator, clock),
 		cancelRideUseCase: new CancelRideUseCase(unitOfWork, clock),
 		getRideHistoryUseCase: new GetRideHistoryUseCase(
-			new KnexRiderRepository(connection),
+			riderRepository,
 			new KnexRideRepository(connection),
 			new KnexDriverRepository(connection),
+		),
+		estimateRidePriceUseCase: new EstimateRidePriceUseCase(
+			riderRepository,
+			distanceGateway,
+			clock,
+			idGenerator,
+			new KnexRideEstimateRepository(connection),
 		),
 	};
 }

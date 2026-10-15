@@ -37,7 +37,7 @@ describe("API des courses sur une vraie PostgreSQL", () => {
 				connection: database.connection,
 				distanceGateway: new StubDistanceGateway(),
 				clock: StubClock.at("2026-03-10T12:00:00+01:00"),
-				idGenerator: new StubIdGenerator("ride-1"),
+				idGenerator: new StubIdGenerator("ride-1", "ride-2"),
 			}),
 		);
 		await new KnexRiderRepository(database.connection).save(
@@ -68,5 +68,28 @@ describe("API des courses sur une vraie PostgreSQL", () => {
 		// Débité de 7 € à la réservation, remboursé à l'annulation (PENDING : gratuite)
 		const rider = await new KnexRiderRepository(database.connection).findById("rider-1");
 		expect(rider?.balance).toEqual(Money.euros(50));
+	});
+
+	it("Story 11 : estime le prix, puis réserve avec le token (consommé en base)", async () => {
+		// Le trajet du StubDistanceGateway : le token garantit CE trajet
+		const ride = {
+			riderId: "rider-1",
+			fromAddress: "10 rue de Rivoli, Paris",
+			toAddress: "5 avenue de l'Opéra, Paris",
+		};
+		const estimated = await request(app).post("/rides/estimate").send(ride);
+		expect(estimated.status).toBe(201);
+		expect(estimated.body).toMatchObject({ token: "ride-1", price: 7 });
+
+		const booked = await request(app)
+			.post("/rides")
+			.send({ ...ride, estimateToken: estimated.body.token });
+		expect(booked.status).toBe(201);
+		expect(booked.body).toMatchObject({ id: "ride-2", price: 7 });
+
+		const reused = await request(app)
+			.post("/rides")
+			.send({ ...ride, estimateToken: estimated.body.token });
+		expect(reused.status).toBe(409);
 	});
 });

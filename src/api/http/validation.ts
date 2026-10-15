@@ -18,3 +18,13 @@ export function optionalBoolean(body: unknown, field: string): boolean {
 	}
 	return value;
 }
+
+/** Lit un champ texte optionnel du corps de la requête (undefined s'il est absent), sinon 400. */
+export function optionalString(body: unknown, field: string): string | undefined {
+	const value = (body as Record<string, unknown> | undefined)?.[field];
+	if (value === undefined) return undefined;
+	if (typeof value !== "string" || value.trim() === "") {
+		throw new InvalidRequestError(`Le champ « ${field} » doit être un texte non vide`);
+	}
+	return value;
+}

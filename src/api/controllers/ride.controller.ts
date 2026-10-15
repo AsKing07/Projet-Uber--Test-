@@ -1,9 +1,10 @@
 import type { RequestHandler } from "express";
 import type { BookRideUseCase } from "@/application/book-ride.usecase";
 import type { CancelRideUseCase } from "@/application/cancel-ride.usecase";
+import type { EstimateRidePriceUseCase } from "@/application/estimate-ride-price.usecase";
 import type { GetRideHistoryUseCase } from "@/application/get-ride-history.usecase";
-import { toHistoryEntryResponse, toRideResponse } from "../http/ride.responses";
-import { optionalBoolean, requiredString } from "../http/validation";
+import { toEstimateResponse, toHistoryEntryResponse, toRideResponse } from "../http/ride.responses";
+import { optionalBoolean, optionalString, requiredString } from "../http/validation";
 
 // Pas de try/catch : Express 5 transmet les erreurs (y compris async) au middleware errorHandler
 
@@ -16,8 +17,23 @@ export const bookRideController =
 			fromAddress: requiredString(request.body, "fromAddress"),
 			toAddress: requiredString(request.body, "toAddress"),
 			uberX: optionalBoolean(request.body, "uberX"),
+			estimateToken: optionalString(request.body, "estimateToken"),
 		});
 		response.status(201).json(toRideResponse(ride));
+	};
+
+/** POST /rides/estimate → 201 + le prix garanti et son token (Story 11) */
+export const estimateRidePriceController =
+	(estimateRidePrice: EstimateRidePriceUseCase): RequestHandler =>
+	async (request, response) => {
+		const estimate = await estimateRidePrice.handle({
+			riderId: requiredString(request.body, "riderId"),
+			fromAddress: requiredString(request.body, "fromAddress"),
+			toAddress: requiredString(request.body, "toAddress"),
+			uberX: optionalBoolean(request.body, "uberX"),
+		});
+		// 201 : l'estimation est enregistrée (elle a un token et une date d'expiration)
+		response.status(201).json(toEstimateResponse(estimate));
 	};
 
 /** POST /rides/:rideId/cancel → 204 */

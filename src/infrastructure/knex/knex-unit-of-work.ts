@@ -1,6 +1,7 @@
 import type { Knex } from "knex";
 import type { TransactionalRepositories, UnitOfWork } from "@/application/ports/unit-of-work";
 import { KnexRideRepository } from "./knex-ride.repository";
+import { KnexRideEstimateRepository } from "./knex-ride-estimate.repository";
 import { KnexRiderRepository } from "./knex-rider.repository";
 
 /** Fabrique les repositories branchés sur une transaction (remplaçable dans les tests d'intégration). */
@@ -9,6 +10,7 @@ export type RepositoriesFactory = (transaction: Knex.Transaction) => Transaction
 const knexRepositories: RepositoriesFactory = (transaction) => ({
 	riders: new KnexRiderRepository(transaction),
 	rides: new KnexRideRepository(transaction),
+	estimates: new KnexRideEstimateRepository(transaction),
 });
 
 /**

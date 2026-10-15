@@ -57,7 +57,8 @@ db/
 
 | Route | Succès | Erreurs |
 |---|---|---|
-| `POST /rides` `{ riderId, fromAddress, toAddress, uberX? }` | 201 + la course | 400 `INVALID_REQUEST` / `INSUFFICIENT_FUNDS`, 404 `RIDER_NOT_FOUND`, 409 `RIDE_ALREADY_PENDING` |
+| `POST /rides/estimate` `{ riderId, fromAddress, toAddress, uberX? }` | 201 + `{ token, price, expiresAt, … }` | 400 `INVALID_REQUEST`, 404 `RIDER_NOT_FOUND` |
+| `POST /rides` `{ riderId, fromAddress, toAddress, uberX?, estimateToken? }` | 201 + la course | 400 `INVALID_REQUEST` / `INSUFFICIENT_FUNDS`, 404 `RIDER_NOT_FOUND` / `ESTIMATE_NOT_FOUND`, 409 `RIDE_ALREADY_PENDING` / `ESTIMATE_EXPIRED` / `ESTIMATE_ALREADY_USED` / `ESTIMATE_MISMATCH` |
 | `POST /rides/:rideId/cancel` | 204 | 404 `RIDE_NOT_FOUND`, 409 `RIDE_ALREADY_CANCELLED` / `RIDE_CANNOT_BE_CANCELLED` |
 | `GET /riders/:riderId/rides` | 200 + l'historique | 404 `RIDER_NOT_FOUND` |
 
@@ -82,5 +83,11 @@ Démarrage : `DATABASE_URL` et `GOOGLE_MAPS_API_KEY` obligatoires (voir `.env.ex
   (`AcceptRideUseCase`) : la course passe à ASSIGNED avec son `driverId`. Pas d'algorithme d'attribution (hors périmètre).
   Refus : Driver bloqué par le Rider → `DRIVER_BLOCKED` (règle `canBeAssignedTo`) ; course non PENDING → `RIDE_NOT_PENDING` ;
   course, Driver ou Rider inconnu → `RIDE_NOT_FOUND` / `DRIVER_NOT_FOUND` / `RIDER_NOT_FOUND`.
+- **d10 — Estimation du prix (Story 11)** : `POST /rides/estimate` calcule le prix comme une réservation faite maintenant et le
+  **garantit 5 minutes** par un token (table `ride_estimates`). Réserver avec `estimateToken` applique ce prix et ce trajet
+  (pas de nouvel appel Google), même si le tarif a changé entre-temps (heure de pointe…). Le token est à usage unique et lié
+  au Rider, aux adresses et à l'option UberX estimés ; il est consommé dans la transaction de la réservation (si elle échoue,
+  il reste utilisable). Refus : inconnu ou d'un autre Rider → `ESTIMATE_NOT_FOUND` ; 5 minutes écoulées (borne exclue) →
+  `ESTIMATE_EXPIRED` ; déjà utilisé → `ESTIMATE_ALREADY_USED` ; course différente → `ESTIMATE_MISMATCH`.
 - **Heures de pointe (Story 9)** : +50 % (×1,5) de **8h00 à 9h00** et de **18h00 à 20h00**, heure de Paris ; 8h00 et 18h00 inclus,
   9h00 et 20h00 exclus. Ordre des majorations (d2) : heures de pointe ×1,5, puis Noël ×2, puis UberX +5 €.
