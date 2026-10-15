@@ -5,12 +5,14 @@ import { calculateRidePrice } from "@/domain/pricing";
 import type { Route } from "@/domain/route";
 
 describe("calculateRidePrice", () => {
+	const ORDINARY_DAY = new Date("2026-03-10T12:00:00+01:00");
+
 	it("un trajet de 0 km à l'intérieur de Paris coûte le prix de base : 2 €", () => {
 		// Arrange
 		const route: Route = { from: inParis(), to: inParis(), distanceKm: 0 };
 
 		// Act
-		const price = calculateRidePrice(route);
+		const price = calculateRidePrice(route, ORDINARY_DAY);
 
 		// Assert
 		expect(price).toEqual(Money.euros(2));
@@ -19,7 +21,7 @@ describe("calculateRidePrice", () => {
 	it("ajoute 0,50 € par kilomètre au prix de base", () => {
 		const route: Route = { from: inParis(), to: inParis(), distanceKm: 10 };
 
-		expect(calculateRidePrice(route)).toEqual(Money.euros(7));
+		expect(calculateRidePrice(route, ORDINARY_DAY)).toEqual(Money.euros(7));
 	});
 
 	it.each([
@@ -33,13 +35,41 @@ describe("calculateRidePrice", () => {
 			expected: 15,
 		},
 	])("$label, 10 km : $expected €", ({ from, to, expected }) => {
-		expect(calculateRidePrice({ from, to, distanceKm: 10 })).toEqual(Money.euros(expected));
+		expect(calculateRidePrice({ from, to, distanceKm: 10 }, ORDINARY_DAY)).toEqual(
+			Money.euros(expected),
+		);
 	});
 
 	it("arrondit au centime pour une distance décimale", () => {
 		// 2 € + 12,345 km × 0,50 € = 8,1725 € → 8,17 €
-		expect(calculateRidePrice({ from: inParis(), to: inParis(), distanceKm: 12.345 })).toEqual(
-			Money.euros(8.17),
-		);
+		expect(
+			calculateRidePrice({ from: inParis(), to: inParis(), distanceKm: 12.345 }, ORDINARY_DAY),
+		).toEqual(Money.euros(8.17));
+	});
+
+	describe("majoration de Noël (décision d3 : du 24/12 18h00 au 25/12 23h59, heure de Paris)", () => {
+		const route: Route = { from: inParis(), to: inParis(), distanceKm: 10 };
+
+		it.each([
+			{ label: "24/12 à 18h00", date: "2026-12-24T18:00:00+01:00" },
+			{ label: "25/12 à 00h30", date: "2026-12-25T00:30:00+01:00" },
+			{ label: "25/12 à 12h00", date: "2026-12-25T12:00:00+01:00" },
+			{ label: "25/12 à 23h59", date: "2026-12-25T23:59:00+01:00" },
+		])("double le prix le $label", ({ date }) => {
+			const price = calculateRidePrice(route, new Date(date));
+
+			expect(price).toEqual(Money.euros(14));
+		});
+
+		it.each([
+			{ label: "24/12 à 17h59", date: "2026-12-24T17:59:00+01:00" },
+			{ label: "26/12 à 00h00", date: "2026-12-26T00:00:00+01:00" },
+			{ label: "23/12 à 12h00", date: "2026-12-23T12:00:00+01:00" },
+			{ label: "25/11 à 12h00", date: "2026-11-25T12:00:00+01:00" },
+		])("ne double pas le prix le $label", ({ date }) => {
+			const price = calculateRidePrice(route, new Date(date));
+
+			expect(price).toEqual(Money.euros(7));
+		});
 	});
 });
