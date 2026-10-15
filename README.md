@@ -63,3 +63,7 @@ db/
   Statut et remboursement sont écrits dans une seule transaction (`UnitOfWork`).
 
 - **d7 — Bonus fidélité** : le point est crédité à la **réservation** (le sujet lie le point au booking : « si le point ne s'ajoute pas, le ride n'est pas sauvegardé »). Course, débit du solde et point sont écrits dans **une seule transaction** (`UnitOfWork`). L'annulation ne retire pas le point (hors périmètre).
+
+- **d8 — Distances Google (Story 7)** : Google a classé Distance Matrix API en « Legacy » (non activable sur les projets récents).
+  La distance passe donc par **Routes API** (`computeRoutes`, appel `fetch`) ; la librairie `@googlemaps/google-maps-services-js`
+  reste utilisée pour le géocodage (ville). Sur le projet Google Cloud : facturation activée, **Geocoding API** et **Routes API** activées.
