@@ -5,3 +5,4 @@ reports
 .env
 .DS_Store
 dist
+.idea/

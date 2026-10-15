@@ -44,7 +44,12 @@ export class BookRideUseCase {
 
 			const bookedAt = this.clock.getNow();
 			const options = { uberX: command.uberX ?? false };
-			const price = calculateRidePrice(route, bookedAt, options, rider.birthDate);
+			const price = calculateRidePrice({
+				route,
+				at: bookedAt,
+				options,
+				riderBirthDate: rider.birthDate,
+			});
 
 			if (!rider.balance.isGreaterThanOrEqual(price)) {
 				throw new DomainError(
