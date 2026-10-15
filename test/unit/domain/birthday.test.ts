@@ -10,4 +10,8 @@ describe("anniversaire du Rider (décision de spec d4)", () => {
 		expect(isBirthday("2000-02-29", new Date("2028-02-28T12:00:00+01:00"))).toBe(false);
 		expect(isBirthday("2000-02-29", new Date("2028-02-29T12:00:00+01:00"))).toBe(true);
 	});
+
+	it("2100 est divisible par 4 mais n'est pas bissextile : l'anniversaire tombe le 28 février", () => {
+		expect(isBirthday("2000-02-29", new Date("2100-02-28T12:00:00+01:00"))).toBe(true);
+	});
 });

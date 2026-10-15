@@ -2,6 +2,7 @@ import { aRide } from "@test/builders/ride.builder";
 import { aRider } from "@test/builders/rider.builder";
 import { InMemoryRideRepository } from "@test/doubles/in-memory-ride.repository";
 import { InMemoryRiderRepository } from "@test/doubles/in-memory-rider.repository";
+import { InMemoryUnitOfWork } from "@test/doubles/in-memory-unit-of-work";
 import { StubClock } from "@test/doubles/stub-clock";
 import { beforeEach, describe, expect, it } from "vitest";
 import { CancelRideUseCase } from "@/application/cancel-ride.usecase";
@@ -22,7 +23,10 @@ describe("Story 2 : annuler une course", () => {
 		riderRepository = new InMemoryRiderRepository();
 		rideRepository = new InMemoryRideRepository();
 		clock = StubClock.at(NOT_BIRTHDAY);
-		cancelRide = new CancelRideUseCase(riderRepository, rideRepository, clock);
+		cancelRide = new CancelRideUseCase(
+			new InMemoryUnitOfWork({ riders: riderRepository, rides: rideRepository }),
+			clock,
+		);
 	});
 
 	const givenRide = async (status: RideStatus) => {
@@ -65,6 +69,19 @@ describe("Story 2 : annuler une course", () => {
 		await givenRide("CANCELLED");
 
 		await expect(cancel()).rejects.toMatchObject({ code: "RIDE_ALREADY_CANCELLED" });
+		// Pas de double remboursement
+		expect(await balance()).toEqual(Money.euros(50));
+	});
+
+	it("refuse d'annuler une course inconnue", async () => {
+		await expect(cancel()).rejects.toMatchObject({ code: "RIDE_NOT_FOUND" });
+	});
+
+	it("refuse d'annuler une course dont le Rider est introuvable, sans l'annuler", async () => {
+		await rideRepository.save(aRide().withId("ride-1").forRider("unknown-rider").build());
+
+		await expect(cancel()).rejects.toMatchObject({ code: "RIDER_NOT_FOUND" });
+		expect((await rideRepository.findById("ride-1"))?.status).toBe("PENDING");
 	});
 
 	it.each<RideStatus>(["IN_PROGRESS", "COMPLETED"])(
@@ -96,5 +113,16 @@ describe("Story 2 : annuler une course", () => {
 		await cancel();
 
 		expect(await balance()).toEqual(Money.euros(57));
+	});
+
+	it("facture la pénalité la veille de l'anniversaire à 23h59, heure de Paris", async () => {
+		// 23h59 à Paris = déjà le 15 juin à Tokyo
+		clock.setNow("2026-06-14T23:59:00+02:00");
+		await givenRide("ASSIGNED");
+
+		await cancel();
+
+		// 50 + 7 - 5
+		expect(await balance()).toEqual(Money.euros(52));
 	});
 });
