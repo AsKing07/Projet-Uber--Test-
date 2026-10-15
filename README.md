@@ -56,3 +56,5 @@ db/
 ## Décisions de spec
 
 À reporter depuis le board du projet une fois tranchées.
+
+- **d7 — Bonus fidélité** : le point est crédité à la **réservation** (le sujet lie le point au booking : « si le point ne s'ajoute pas, le ride n'est pas sauvegardé »). Course, débit du solde et point sont écrits dans **une seule transaction** (`UnitOfWork`). L'annulation ne retire pas le point (hors périmètre).

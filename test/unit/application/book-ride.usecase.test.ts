@@ -3,6 +3,7 @@ import { aRide } from "@test/builders/ride.builder";
 import { aRider } from "@test/builders/rider.builder";
 import { InMemoryRideRepository } from "@test/doubles/in-memory-ride.repository";
 import { InMemoryRiderRepository } from "@test/doubles/in-memory-rider.repository";
+import { InMemoryUnitOfWork } from "@test/doubles/in-memory-unit-of-work";
 import { StubClock } from "@test/doubles/stub-clock";
 import { StubDistanceGateway } from "@test/doubles/stub-distance.gateway";
 import { StubIdGenerator } from "@test/doubles/stub-id-generator";
@@ -25,8 +26,7 @@ describe("Story 1 : réserver une course", () => {
 		// Paris → Paris, 10 km : 2 € + 10 × 0,50 € = 7 €
 		distanceGateway = new StubDistanceGateway({ from: inParis(), to: inParis(), distanceKm: 10 });
 		bookRide = new BookRideUseCase(
-			riderRepository,
-			rideRepository,
+			new InMemoryUnitOfWork({ riders: riderRepository, rides: rideRepository }),
 			distanceGateway,
 			new StubIdGenerator("ride-1"),
 			StubClock.at(NOW),
@@ -65,6 +65,25 @@ describe("Story 1 : réserver une course", () => {
 		await book();
 
 		expect((await riderRepository.findById("rider-1"))?.balance).toEqual(Money.euros(43));
+	});
+
+	describe("Bonus : fidélité", () => {
+		it("crédite un point de fidélité au Rider pour la course réservée", async () => {
+			await riderRepository.save(aRider().withId("rider-1").withLoyaltyPoints(3).build());
+
+			await book();
+
+			expect((await riderRepository.findById("rider-1"))?.loyaltyPoints).toBe(4);
+		});
+
+		it("ne crédite aucun point quand la réservation est refusée", async () => {
+			await riderRepository.save(
+				aRider().withId("rider-1").withBalance(Money.euros(1)).withLoyaltyPoints(3).build(),
+			);
+
+			await expect(book()).rejects.toMatchObject({ code: "INSUFFICIENT_FUNDS" });
+			expect((await riderRepository.findById("rider-1"))?.loyaltyPoints).toBe(3);
+		});
 	});
 
 	describe("fonds suffisants (valeurs limites autour du prix de 7 €)", () => {

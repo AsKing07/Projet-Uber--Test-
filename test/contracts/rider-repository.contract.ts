@@ -15,11 +15,12 @@ export function riderRepositoryContract(
 			repository = await createRepository();
 		});
 
-		it("retrouve un Rider enregistré, avec son solde et ses Drivers bloqués", async () => {
+		it("retrouve un Rider enregistré, avec son solde, ses Drivers bloqués et ses points de fidélité", async () => {
 			const rider = aRider()
 				.withId("rider-1")
 				.withBalance(Money.euros(42.5))
 				.withBlockedDrivers("driver-1", "driver-2")
+				.withLoyaltyPoints(3)
 				.build();
 
 			await repository.save(rider);
