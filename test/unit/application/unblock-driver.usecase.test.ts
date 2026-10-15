@@ -25,6 +25,14 @@ describe("Story 10 : débloquer un Driver", () => {
 		expect(await blockedDrivers()).toEqual(["driver-1", "driver-3"]);
 	});
 
+	it("débloquer un Driver qui n'est pas bloqué ne change rien", async () => {
+		await riderRepository.save(aRider().withId("rider-1").withBlockedDrivers("driver-1").build());
+
+		await unblock("driver-2");
+
+		expect(await blockedDrivers()).toEqual(["driver-1"]);
+	});
+
 	it("refuse le déblocage pour un Rider inconnu", async () => {
 		await expect(unblock("driver-1")).rejects.toMatchObject({ code: "RIDER_NOT_FOUND" });
 	});
