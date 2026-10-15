@@ -1,12 +1,15 @@
-import "dotenv/config";
-import {it, expect} from "vitest";
+import { expect, it } from "vitest";
 import { GoogleMapsScanner } from "@/infrastructure/scanners/GoogleMapsScanner";
 
 const itIfGoogleKey = process.env.GOOGLE_MAPS_API_KEY ? it : it.skip;
 
-itIfGoogleKey("should calculate real distance between Paris and Lyon", async () => {
-    const scanner = new GoogleMapsScanner();
-    const distance = await scanner.getDistance("Paris, France", "Lyon, France");
+itIfGoogleKey("devrait renvoyer le trajet complet pour une adresse valide", async () => {
+	const apiKey = process.env.GOOGLE_MAPS_API_KEY ?? "";
+	const scanner = new GoogleMapsScanner(apiKey);
+	const route = await scanner.getRoute("10 rue de Rivoli, Paris, France", "Lyon, France");
 
-    expect(distance).toBeGreaterThan(0);
+	expect(route.from.city).toBe("Paris");
+	expect(route.to.city).toBe("Lyon");
+	expect(route.distanceKm).toBeGreaterThan(400);
+	expect(route.distanceKm).toBeLessThan(500);
 });

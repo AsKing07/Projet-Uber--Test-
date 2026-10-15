@@ -1,59 +1,66 @@
-import {Client} from "@googlemaps/google-maps-services-js";
-import {DistanceGateway, Route} from "../../application/ports/distance.gateway";
-import "dotenv/config";
-
-const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+import { AddressType, Client } from "@googlemaps/google-maps-services-js";
+import type { DistanceGateway, Route } from "../../application/ports/distance.gateway";
 
 export class GoogleMapsScanner implements DistanceGateway {
-    getRoute(fromAddress: string, toAddress: string): Promise<Route> {
-        throw new Error("Method not implemented.");
-    }
+	private readonly client = new Client({});
 
-    private client = new Client({});
+	constructor(private readonly apiKey: string) {}
 
-    async getDistance(
-        origin: string,
-        destination: string,
-    ): Promise<number> {
-        const response = await this.client.distancematrix({
-            params: {
-                origins: [origin],
-                destinations: [destination],
-                key: apiKey!,
-            },
-        });
+	async getRoute(origin: string, destination: string): Promise<Route> {
+		const distanceMeters = await this.getDistance(origin, destination);
+		const fromCity = await this.getCity(origin);
+		const toCity = await this.getCity(destination);
 
-        const element = response.data.rows[0]?.elements[0];
+		return {
+			from: { address: origin, city: fromCity },
+			to: { address: destination, city: toCity },
+			distanceKm: distanceMeters / 1000,
+		};
+	}
 
-        if (!element || element.status !== "OK") {
-            throw new Error("Impossible de calculer la distance");
-        }
+	private async getDistance(origin: string, destination: string): Promise<number> {
+		if (!this.apiKey) {
+			throw new Error("Google Maps API key is not set");
+		}
 
-        return element.distance.value; // distance en mètres
-    }
+		const response = await this.client.distancematrix({
+			params: {
+				origins: [origin],
+				destinations: [destination],
+				key: this.apiKey,
+				language: "fr",
+			},
+		});
 
-    async getCity(address: string): Promise<string> {
-        let key = apiKey;
-        if (!key) {
-            throw new Error("Google Maps API key is not set");
-        }
-        const response = await this.client.geocode({
-            params: {
-                address,
-                key: apiKey!,
-            },
-        });
+		const element = response.data.rows[0]?.elements[0];
 
-        const components = response.data.results[0]?.address_components ?? [];
+		if (!element || element.status !== "OK") {
+			throw new Error("Impossible de calculer la distance");
+		}
 
-        const city = components.find((component) =>
-            component.types.includes("locality"),
-        );
+		return element.distance.value;
+	}
 
-        if (!city) {
-            throw new Error("Ville introuvable pour cette adresse");
-        }
+	private async getCity(address: string): Promise<string> {
+		if (!this.apiKey) {
+			throw new Error("Google Maps API key is not set");
+		}
 
-        return city.long_name;
-    }
+		const response = await this.client.geocode({
+			params: {
+				address,
+				key: this.apiKey,
+				language: "fr",
+			},
+		});
+
+		const components = response.data.results[0]?.address_components ?? [];
+		const city = components.find((component) => component.types.includes(AddressType.locality));
+
+		if (!city) {
+			throw new Error("Ville introuvable pour cette adresse");
+		}
+
+		return city.long_name;
+	}
 }
