@@ -53,6 +53,17 @@ db/
 - Noms des tests en français, qui décrivent la règle métier.
 - Toute décision de spec est figée par un test et notée dans la section ci-dessous.
 
+## API (Story 8)
+
+| Route | Succès | Erreurs |
+|---|---|---|
+| `POST /rides` `{ riderId, fromAddress, toAddress, uberX? }` | 201 + la course | 400 `INVALID_REQUEST` / `INSUFFICIENT_FUNDS`, 404 `RIDER_NOT_FOUND`, 409 `RIDE_ALREADY_PENDING` |
+| `POST /rides/:rideId/cancel` | 204 | 404 `RIDE_NOT_FOUND`, 409 `RIDE_ALREADY_CANCELLED` / `RIDE_CANNOT_BE_CANCELLED` |
+| `GET /riders/:riderId/rides` | 200 + l'historique | 404 `RIDER_NOT_FOUND` |
+
+Prix en euros, dates en ISO 8601. Erreurs : `{ code, error }` ; toute erreur technique répond `500 { code: "INTERNAL_ERROR" }` sans détail interne.
+Démarrage : `DATABASE_URL` et `GOOGLE_MAPS_API_KEY` obligatoires (voir `.env.example`), base migrée (`npm run knex -- migrate:latest`).
+
 ## Décisions de spec
 
 À reporter depuis le board du projet une fois tranchées.

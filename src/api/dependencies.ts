@@ -1,7 +1,10 @@
-import knex from "knex";
+import knex, { type Knex } from "knex";
 import { BookRideUseCase } from "@/application/book-ride.usecase";
 import { CancelRideUseCase } from "@/application/cancel-ride.usecase";
 import { GetRideHistoryUseCase } from "@/application/get-ride-history.usecase";
+import type { Clock } from "@/application/ports/clock";
+import type { DistanceGateway } from "@/application/ports/distance.gateway";
+import type { IdGenerator } from "@/application/ports/id-generator";
 import { KnexDriverRepository } from "@/infrastructure/knex/knex-driver.repository";
 import { KnexRideRepository } from "@/infrastructure/knex/knex-ride.repository";
 import { KnexRiderRepository } from "@/infrastructure/knex/knex-rider.repository";
@@ -16,23 +19,43 @@ export type AppDependencies = {
 	getRideHistoryUseCase: GetRideHistoryUseCase;
 };
 
-export function buildDependencies(): AppDependencies {
-	const connection = knex({
-		client: "pg",
-		connection: process.env.DATABASE_URL,
-	});
+export type Infrastructure = {
+	connection: Knex;
+	distanceGateway: DistanceGateway;
+	clock: Clock;
+	idGenerator: IdGenerator;
+};
 
+/** Assemble les use cases sur une infrastructure donnée (réutilisé par les tests E2E sur vraie base). */
+export function buildDependencies({
+	connection,
+	distanceGateway,
+	clock,
+	idGenerator,
+}: Infrastructure): AppDependencies {
 	const unitOfWork = new KnexUnitOfWork(connection);
-	const distanceGateway = new GoogleMapsScanner(process.env.GOOGLE_MAPS_API_KEY ?? "");
-	const clock = new SystemClock();
-	const idGenerator = new UuidIdGenerator();
-	const riderRepository = new KnexRiderRepository(connection);
-	const rideRepository = new KnexRideRepository(connection);
-	const driverRepository = new KnexDriverRepository(connection);
-
 	return {
 		bookRideUseCase: new BookRideUseCase(unitOfWork, distanceGateway, idGenerator, clock),
 		cancelRideUseCase: new CancelRideUseCase(unitOfWork, clock),
-		getRideHistoryUseCase: new GetRideHistoryUseCase(riderRepository, rideRepository, driverRepository),
+		getRideHistoryUseCase: new GetRideHistoryUseCase(
+			new KnexRiderRepository(connection),
+			new KnexRideRepository(connection),
+			new KnexDriverRepository(connection),
+		),
 	};
+}
+
+/** Infrastructure de production, lue dans l'environnement. Échoue au démarrage s'il manque une variable. */
+export function buildProductionDependencies(env: NodeJS.ProcessEnv = process.env): AppDependencies {
+	const databaseUrl = env.DATABASE_URL;
+	if (!databaseUrl) {
+		throw new Error("DATABASE_URL manquante : voir .env.example");
+	}
+	return buildDependencies({
+		connection: knex({ client: "pg", connection: databaseUrl }),
+		// Le constructeur lève une erreur explicite si la clé est absente
+		distanceGateway: new GoogleMapsScanner(env.GOOGLE_MAPS_API_KEY ?? ""),
+		clock: new SystemClock(),
+		idGenerator: new UuidIdGenerator(),
+	});
 }

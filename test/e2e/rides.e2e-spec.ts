@@ -1,101 +1,196 @@
-import request from "supertest";
-import { describe, expect, it } from "vitest";
-import { BookRideUseCase } from "@/application/book-ride.usecase";
-import { CancelRideUseCase } from "@/application/cancel-ride.usecase";
-import { GetRideHistoryUseCase } from "@/application/get-ride-history.usecase";
-import { createApp } from "@/api/app";
-import { Money } from "@/domain/money";
-import { aRider } from "@test/builders/rider.builder";
+import { aDriver } from "@test/builders/driver.builder";
 import { aRide } from "@test/builders/ride.builder";
-import { InMemoryDriverRepository } from "@test/doubles/in-memory-driver.repository";
-import { InMemoryRideRepository } from "@test/doubles/in-memory-ride.repository";
-import { InMemoryRiderRepository } from "@test/doubles/in-memory-rider.repository";
-import { InMemoryUnitOfWork } from "@test/doubles/in-memory-unit-of-work";
-import { StubClock } from "@test/doubles/stub-clock";
-import { StubDistanceGateway } from "@test/doubles/stub-distance.gateway";
-import { StubIdGenerator } from "@test/doubles/stub-id-generator";
+import { aRider } from "@test/builders/rider.builder";
+import request from "supertest";
+import { beforeEach, describe, expect, it } from "vitest";
+import type { DistanceGateway } from "@/application/ports/distance.gateway";
+import { Money } from "@/domain/money";
+import { createInMemoryApp } from "./support/in-memory-app";
 
-function createTestApp() {
-	const riderRepository = new InMemoryRiderRepository();
-	const rideRepository = new InMemoryRideRepository();
-	const driverRepository = new InMemoryDriverRepository();
-	const clock = StubClock.at("2026-03-10T12:00:00+01:00");
-	const unitOfWork = new InMemoryUnitOfWork({ riders: riderRepository, rides: rideRepository });
-	const distanceGateway = new StubDistanceGateway({
-		from: { address: "10 rue de Rivoli, Paris", city: "Paris" },
-		to: { address: "Lyon", city: "Lyon" },
-		distanceKm: 450,
-	});
-	const idGenerator = new StubIdGenerator("ride-1");
+/** E2E de l'API (Supertest) sur des fakes : statuts HTTP, validation, format des réponses. */
+describe("API des courses", () => {
+	let api: ReturnType<typeof createInMemoryApp>;
 
-	const app = createApp({
-		bookRideUseCase: new BookRideUseCase(unitOfWork, distanceGateway, idGenerator, clock),
-		cancelRideUseCase: new CancelRideUseCase(unitOfWork, clock),
-		getRideHistoryUseCase: new GetRideHistoryUseCase(riderRepository, rideRepository, driverRepository),
+	beforeEach(() => {
+		api = createInMemoryApp();
 	});
 
-	return { app, riderRepository, rideRepository };
-}
+	const givenRider = (balance = 50) =>
+		api.riderRepository.save(aRider().withId("rider-1").withBalance(Money.euros(balance)).build());
+	const book = (body: object) => request(api.app).post("/rides").send(body);
+	const validBooking = {
+		riderId: "rider-1",
+		fromAddress: "10 rue de Rivoli",
+		toAddress: "5 avenue de l'Opéra",
+	};
 
-describe("API Uber /rides", () => {
-	it("crée une course pour un rider valide via POST /rides", async () => {
-		const { app, riderRepository } = createTestApp();
-		await riderRepository.save(aRider().withId("rider-1").withBalance(Money.euros(300)).build());
+	describe("POST /rides : réserver une course", () => {
+		it("201 + la course créée, prix en euros", async () => {
+			await givenRider();
 
-		const response = await request(app)
-			.post("/rides")
-			.send({
+			const response = await book(validBooking);
+
+			expect(response.status).toBe(201);
+			expect(response.body).toEqual({
+				id: "ride-1",
 				riderId: "rider-1",
-				fromAddress: "10 rue de Rivoli, Paris",
-				toAddress: "Lyon",
+				driverId: null,
+				from: { address: "10 rue de Rivoli, Paris", city: "Paris" },
+				to: { address: "5 avenue de l'Opéra, Paris", city: "Paris" },
+				distanceKm: 10,
+				price: 7,
 				uberX: false,
+				status: "PENDING",
+				bookedAt: "2026-03-10T11:00:00.000Z",
 			});
+		});
 
-		expect(response.status).toBe(201);
-		expect(response.body).toMatchObject({
-			riderId: "rider-1",
-			status: "PENDING",
-			from: { city: "Paris" },
-			to: { city: "Lyon" },
+		it.each(["riderId", "fromAddress", "toAddress"])("400 si le champ %s manque", async (field) => {
+			await givenRider();
+
+			const response = await book({ ...validBooking, [field]: undefined });
+
+			expect(response.status).toBe(400);
+			expect(response.body).toMatchObject({ code: "INVALID_REQUEST" });
+		});
+
+		it("400 si uberX n'est pas un booléen", async () => {
+			await givenRider();
+
+			const response = await book({ ...validBooking, uberX: "oui" });
+
+			expect(response.status).toBe(400);
+		});
+
+		it("400 si le corps n'est pas du JSON valide", async () => {
+			const response = await request(api.app)
+				.post("/rides")
+				.set("Content-Type", "application/json")
+				.send("{ pas du json");
+
+			expect(response.status).toBe(400);
+			expect(response.body).toMatchObject({ code: "INVALID_REQUEST" });
+		});
+
+		it("404 RIDER_NOT_FOUND pour un Rider inconnu", async () => {
+			const response = await book(validBooking);
+
+			expect(response.status).toBe(404);
+			expect(response.body).toMatchObject({ code: "RIDER_NOT_FOUND" });
+		});
+
+		it("400 INSUFFICIENT_FUNDS si le solde ne couvre pas le prix", async () => {
+			await givenRider(6.99);
+
+			const response = await book(validBooking);
+
+			expect(response.status).toBe(400);
+			expect(response.body).toMatchObject({ code: "INSUFFICIENT_FUNDS" });
+		});
+
+		it("409 RIDE_ALREADY_PENDING si une course attend déjà un Driver", async () => {
+			await givenRider();
+			await book(validBooking);
+
+			const response = await book(validBooking);
+
+			expect(response.status).toBe(409);
+			expect(response.body).toMatchObject({ code: "RIDE_ALREADY_PENDING" });
+		});
+
+		it("500 avec un message générique si une erreur technique survient (aucun détail interne exposé)", async () => {
+			const brokenGateway: DistanceGateway = {
+				getRoute: async () => {
+					throw new Error('insert into "riders" … détail interne');
+				},
+			};
+			api = createInMemoryApp(brokenGateway);
+			await givenRider();
+
+			const response = await book(validBooking);
+
+			expect(response.status).toBe(500);
+			expect(response.body).toEqual({ code: "INTERNAL_ERROR", error: "Erreur interne" });
 		});
 	});
 
-	it("renvoie 404 si le rider n'existe pas pour GET /riders/:riderId/rides", async () => {
-		const { app } = createTestApp();
+	describe("POST /rides/:rideId/cancel : annuler une course", () => {
+		it("204, la course est annulée et le prix remboursé", async () => {
+			await givenRider(43);
+			await api.rideRepository.save(
+				aRide().withId("ride-1").forRider("rider-1").withPrice(Money.euros(7)).build(),
+			);
 
-		const response = await request(app).get("/riders/inconnu/rides");
+			const response = await request(api.app).post("/rides/ride-1/cancel");
 
-		expect(response.status).toBe(404);
-		expect(response.body).toMatchObject({ code: "RIDER_NOT_FOUND" });
-	});
+			expect(response.status).toBe(204);
+			expect((await api.rideRepository.findById("ride-1"))?.status).toBe("CANCELLED");
+			expect((await api.riderRepository.findById("rider-1"))?.balance).toEqual(Money.euros(50));
+		});
 
-	it("renvoie l'historique d'un rider via GET /riders/:riderId/rides", async () => {
-		const { app, riderRepository, rideRepository } = createTestApp();
-		await riderRepository.save(aRider().withId("rider-1").withBalance(Money.euros(300)).build());
-		await rideRepository.save(
-			aRide().withId("ride-1").forRider("rider-1").withStatus("PENDING").build(),
-		);
+		it("404 RIDE_NOT_FOUND pour une course inconnue", async () => {
+			const response = await request(api.app).post("/rides/inconnue/cancel");
 
-		const response = await request(app).get("/riders/rider-1/rides");
+			expect(response.status).toBe(404);
+			expect(response.body).toMatchObject({ code: "RIDE_NOT_FOUND" });
+		});
 
-		expect(response.status).toBe(200);
-		expect(response.body).toHaveLength(1);
-		expect(response.body[0]).toMatchObject({
-			rideId: "ride-1",
-			status: "PENDING",
+		it("409 RIDE_ALREADY_CANCELLED pour une course déjà annulée", async () => {
+			await givenRider();
+			await api.rideRepository.save(
+				aRide().withId("ride-1").forRider("rider-1").withStatus("CANCELLED").build(),
+			);
+
+			const response = await request(api.app).post("/rides/ride-1/cancel");
+
+			expect(response.status).toBe(409);
+			expect(response.body).toMatchObject({ code: "RIDE_ALREADY_CANCELLED" });
+		});
+
+		it("409 RIDE_CANNOT_BE_CANCELLED pour une course commencée", async () => {
+			await givenRider();
+			await api.rideRepository.save(
+				aRide().withId("ride-1").forRider("rider-1").withStatus("IN_PROGRESS").build(),
+			);
+
+			const response = await request(api.app).post("/rides/ride-1/cancel");
+
+			expect(response.status).toBe(409);
+			expect(response.body).toMatchObject({ code: "RIDE_CANNOT_BE_CANCELLED" });
 		});
 	});
 
-	it("annule une course via DELETE /rides/:rideId/cancel", async () => {
-		const { app, riderRepository, rideRepository } = createTestApp();
-		await riderRepository.save(aRider().withId("rider-1").withBalance(Money.euros(300)).build());
-		await rideRepository.save(
-			aRide().withId("ride-1").forRider("rider-1").withStatus("PENDING").build(),
-		);
+	describe("GET /riders/:riderId/rides : historique", () => {
+		it("200 + l'historique, prix en euros et Driver mentionné", async () => {
+			await givenRider();
+			await api.driverRepository.save(aDriver().withId("driver-1").withName("Bob").build());
+			await api.rideRepository.save(
+				aRide()
+					.withId("ride-1")
+					.forRider("rider-1")
+					.withDriver("driver-1")
+					.withStatus("ASSIGNED")
+					.build(),
+			);
 
-		const response = await request(app).delete("/rides/ride-1/cancel");
+			const response = await request(api.app).get("/riders/rider-1/rides");
 
-		expect(response.status).toBe(200);
-		expect(response.body).toEqual({ ok: true });
+			expect(response.status).toBe(200);
+			expect(response.body).toEqual([
+				expect.objectContaining({
+					rideId: "ride-1",
+					price: 7,
+					status: "ASSIGNED",
+					driver: { id: "driver-1", name: "Bob" },
+				}),
+			]);
+		});
+
+		it("404 RIDER_NOT_FOUND pour un Rider inconnu", async () => {
+			const response = await request(api.app).get("/riders/inconnu/rides");
+
+			expect(response.status).toBe(404);
+			expect(response.body).toMatchObject({ code: "RIDER_NOT_FOUND" });
+		});
 	});
 });

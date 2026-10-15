@@ -1,25 +1,19 @@
 import { Router } from "express";
-import type { AppDependencies } from "../dependencies";
 import {
-	createBookRideController,
-	createCancelRideController,
-	createGetRideHistoryController,
+	bookRideController,
+	cancelRideController,
+	getRideHistoryController,
 } from "../controllers/ride.controller";
+import type { AppDependencies } from "../dependencies";
 
-export function createRideRouter(dependencies: Partial<AppDependencies>) {
+export function createRideRouter(dependencies: AppDependencies): Router {
 	const router = Router();
-
-	if (dependencies.bookRideUseCase) {
-		router.post("/rides", createBookRideController(dependencies.bookRideUseCase));
-	}
-
-	if (dependencies.cancelRideUseCase) {
-		router.delete("/rides/:rideId/cancel", createCancelRideController(dependencies.cancelRideUseCase));
-	}
-
-	if (dependencies.getRideHistoryUseCase) {
-		router.get("/riders/:riderId/rides", createGetRideHistoryController(dependencies.getRideHistoryUseCase));
-	}
-
+	router.post("/rides", bookRideController(dependencies.bookRideUseCase));
+	// POST et non DELETE : annuler change le statut de la course, la ressource n'est pas supprimée
+	router.post("/rides/:rideId/cancel", cancelRideController(dependencies.cancelRideUseCase));
+	router.get(
+		"/riders/:riderId/rides",
+		getRideHistoryController(dependencies.getRideHistoryUseCase),
+	);
 	return router;
 }
