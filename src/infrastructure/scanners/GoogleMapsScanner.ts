@@ -1,6 +1,14 @@
 import { AddressType, Client } from "@googlemaps/google-maps-services-js";
 import type { DistanceGateway, Route } from "../../application/ports/distance.gateway";
 
+const ROUTES_API_URL = "https://routes.googleapis.com/directions/v2:computeRoutes";
+
+/**
+ * Adapter Google Maps du DistanceGateway (Story 7).
+ * - Ville : Geocoding API, via @googlemaps/google-maps-services-js
+ * - Distance : Routes API, via fetch (la librairie ne couvre pas Routes API)
+ * APIs à activer sur le projet Google Cloud (avec la facturation) : Geocoding API et Routes API.
+ */
 export class GoogleMapsScanner implements DistanceGateway {
 	private readonly client = new Client({});
 
@@ -25,23 +33,41 @@ export class GoogleMapsScanner implements DistanceGateway {
 		};
 	}
 
+	/**
+	 * Distance en mètres via Routes API (computeRoutes).
+	 * Distance Matrix est classée « Legacy » par Google et n'est plus activable sur les projets récents (décision d8).
+	 */
 	private async getDistance(origin: string, destination: string): Promise<number> {
-		const response = await this.client.distancematrix({
-			params: {
-				origins: [origin],
-				destinations: [destination],
-				key: this.apiKey,
-				language: "fr",
+		const response = await fetch(ROUTES_API_URL, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				"X-Goog-Api-Key": this.apiKey,
+				"X-Goog-FieldMask": "routes.distanceMeters", // on ne demande (et ne paie) que la distance
 			},
+			body: JSON.stringify({
+				origin: { address: origin },
+				destination: { address: destination },
+				travelMode: "DRIVE",
+				languageCode: "fr",
+			}),
 		});
 
-		const element = response.data.rows[0]?.elements[0];
-
-		if (!element || element.status !== "OK") {
-			throw new Error("Impossible de calculer la distance");
+		if (!response.ok) {
+			const details = await response.text();
+			// 400 / 404 : adresse non reconnue ; autres codes (403…) : problème de clé, de facturation ou d'API non activée
+			if (response.status === 400 || response.status === 404) {
+				throw new Error(`Impossible de calculer la distance : ${details}`);
+			}
+			throw new Error(`Routes API : erreur ${response.status} ${details}`);
 		}
 
-		return element.distance.value;
+		const data = (await response.json()) as { routes?: { distanceMeters?: number }[] };
+		const distanceMeters = data.routes?.[0]?.distanceMeters;
+		if (distanceMeters === undefined) {
+			throw new Error("Impossible de calculer la distance");
+		}
+		return distanceMeters;
 	}
 
 	private async getCity(address: string): Promise<string> {

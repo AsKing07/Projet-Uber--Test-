@@ -75,6 +75,9 @@ Démarrage : `DATABASE_URL` et `GOOGLE_MAPS_API_KEY` obligatoires (voir `.env.ex
 
 - **d7 — Bonus fidélité** : le point est crédité à la **réservation** (le sujet lie le point au booking : « si le point ne s'ajoute pas, le ride n'est pas sauvegardé »). Course, débit du solde et point sont écrits dans **une seule transaction** (`UnitOfWork`). L'annulation ne retire pas le point (hors périmètre).
 
+- **d8 — Distances Google (Story 7)** : Google a classé Distance Matrix API en « Legacy » (non activable sur les projets récents).
+  La distance passe donc par **Routes API** (`computeRoutes`, appel `fetch`) ; la librairie `@googlemaps/google-maps-services-js`
+  reste utilisée pour le géocodage (ville). Sur le projet Google Cloud : facturation activée, **Geocoding API** et **Routes API** activées.
 - **d9 — Assignation d'un Driver (Story 10)** : l'assignation se fait quand un Driver **accepte** une course PENDING
   (`AcceptRideUseCase`) : la course passe à ASSIGNED avec son `driverId`. Pas d'algorithme d'attribution (hors périmètre).
   Refus : Driver bloqué par le Rider → `DRIVER_BLOCKED` (règle `canBeAssignedTo`) ; course non PENDING → `RIDE_NOT_PENDING` ;
