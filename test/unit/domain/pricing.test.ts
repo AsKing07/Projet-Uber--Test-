@@ -1,27 +1,41 @@
 import { inParis, outsideParis } from "@test/builders/location";
 import { describe, expect, it } from "vitest";
 import { Money } from "@/domain/money";
-import { calculateRidePrice } from "@/domain/pricing";
-import type { Route } from "@/domain/route";
+import { calculateRidePrice, type PricingContext } from "@/domain/pricing";
+import type { RideOptions } from "@/domain/ride";
 
 describe("calculateRidePrice", () => {
 	const ORDINARY_DAY = new Date("2026-03-10T12:00:00+01:00");
+	const STANDARD: RideOptions = { uberX: false };
+	const UBERX: RideOptions = { uberX: true };
+	const NOT_BIRTHDAY = "1990-06-15";
+
+	/**
+	 * Contexte par défaut : Paris → Paris, 10 km (7 €), un jour ordinaire, course standard, pas l'anniversaire.
+	 * Chaque test ne précise que ce qui compte pour lui.
+	 */
+	const priceOf = (overrides: Partial<PricingContext> = {}): Money =>
+		calculateRidePrice({
+			route: { from: inParis(), to: inParis(), distanceKm: 10 },
+			at: ORDINARY_DAY,
+			options: STANDARD,
+			riderBirthDate: NOT_BIRTHDAY,
+			...overrides,
+		});
 
 	it("un trajet de 0 km à l'intérieur de Paris coûte le prix de base : 2 €", () => {
 		// Arrange
-		const route: Route = { from: inParis(), to: inParis(), distanceKm: 0 };
+		const route = { from: inParis(), to: inParis(), distanceKm: 0 };
 
 		// Act
-		const price = calculateRidePrice(route, ORDINARY_DAY);
+		const price = priceOf({ route });
 
 		// Assert
 		expect(price).toEqual(Money.euros(2));
 	});
 
 	it("ajoute 0,50 € par kilomètre au prix de base", () => {
-		const route: Route = { from: inParis(), to: inParis(), distanceKm: 10 };
-
-		expect(calculateRidePrice(route, ORDINARY_DAY)).toEqual(Money.euros(7));
+		expect(priceOf()).toEqual(Money.euros(7));
 	});
 
 	it.each([
@@ -35,30 +49,24 @@ describe("calculateRidePrice", () => {
 			expected: 15,
 		},
 	])("$label, 10 km : $expected €", ({ from, to, expected }) => {
-		expect(calculateRidePrice({ from, to, distanceKm: 10 }, ORDINARY_DAY)).toEqual(
-			Money.euros(expected),
-		);
+		expect(priceOf({ route: { from, to, distanceKm: 10 } })).toEqual(Money.euros(expected));
 	});
 
 	it("arrondit au centime pour une distance décimale", () => {
 		// 2 € + 12,345 km × 0,50 € = 8,1725 € → 8,17 €
-		expect(
-			calculateRidePrice({ from: inParis(), to: inParis(), distanceKm: 12.345 }, ORDINARY_DAY),
-		).toEqual(Money.euros(8.17));
+		expect(priceOf({ route: { from: inParis(), to: inParis(), distanceKm: 12.345 } })).toEqual(
+			Money.euros(8.17),
+		);
 	});
 
 	describe("majoration de Noël (décision d3 : du 24/12 18h00 au 25/12 23h59, heure de Paris)", () => {
-		const route: Route = { from: inParis(), to: inParis(), distanceKm: 10 };
-
 		it.each([
-			{ label: "24/12 à 18h00", date: "2026-12-24T18:00:00+01:00" },
+			{ label: "24/12 à 21h00", date: "2026-12-24T21:00:00+01:00" },
 			{ label: "25/12 à 00h30", date: "2026-12-25T00:30:00+01:00" },
 			{ label: "25/12 à 12h00", date: "2026-12-25T12:00:00+01:00" },
 			{ label: "25/12 à 23h59", date: "2026-12-25T23:59:00+01:00" },
 		])("double le prix le $label", ({ date }) => {
-			const price = calculateRidePrice(route, new Date(date));
-
-			expect(price).toEqual(Money.euros(14));
+			expect(priceOf({ at: new Date(date) })).toEqual(Money.euros(14));
 		});
 
 		it.each([
@@ -67,9 +75,68 @@ describe("calculateRidePrice", () => {
 			{ label: "23/12 à 12h00", date: "2026-12-23T12:00:00+01:00" },
 			{ label: "25/11 à 12h00", date: "2026-11-25T12:00:00+01:00" },
 		])("ne double pas le prix le $label", ({ date }) => {
-			const price = calculateRidePrice(route, new Date(date));
+			expect(priceOf({ at: new Date(date) })).toEqual(Money.euros(7));
+		});
+	});
 
-			expect(price).toEqual(Money.euros(7));
+	describe("supplément UberX (Story 6)", () => {
+		it("ne facture pas de supplément pour une course qui n'est pas UberX", () => {
+			expect(priceOf({ options: STANDARD })).toEqual(Money.euros(7));
+		});
+
+		it("facture 5 € de plus pour une course UberX un jour ordinaire", () => {
+			expect(priceOf({ options: UBERX })).toEqual(Money.euros(12));
+		});
+
+		it("offre le supplément UberX le jour de l'anniversaire du Rider", () => {
+			expect(priceOf({ options: UBERX, riderBirthDate: "2003-03-10" })).toEqual(Money.euros(7));
+		});
+
+		it("facture le supplément UberX le lendemain de l'anniversaire du Rider", () => {
+			expect(priceOf({ options: UBERX, riderBirthDate: "2003-03-09" })).toEqual(Money.euros(12));
+		});
+
+		it("ajoute le supplément UberX après la majoration de Noël, sans le doubler (décision d2)", () => {
+			const christmas = new Date("2026-12-25T12:00:00+01:00");
+
+			expect(priceOf({ at: christmas, options: UBERX })).toEqual(Money.euros(19));
+		});
+	});
+
+	describe("majoration aux heures de pointe (Story 9) : [8h00, 9h00[ et [18h00, 20h00[", () => {
+		it.each([
+			{ label: "8h00", date: "2026-03-10T08:00:00+01:00" },
+			{ label: "8h30", date: "2026-03-10T08:30:00+01:00" },
+			{ label: "8h59", date: "2026-03-10T08:59:00+01:00" },
+			{ label: "18h00", date: "2026-03-10T18:00:00+01:00" },
+			{ label: "19h00", date: "2026-03-10T19:00:00+01:00" },
+			{ label: "19h59", date: "2026-03-10T19:59:00+01:00" },
+		])("majore le prix ×1,5 à $label", ({ date }) => {
+			expect(priceOf({ at: new Date(date) })).toEqual(Money.euros(10.5));
+		});
+
+		it.each([
+			{ label: "7h59", date: "2026-03-10T07:59:00+01:00" },
+			{ label: "9h00", date: "2026-03-10T09:00:00+01:00" },
+			{ label: "17h59", date: "2026-03-10T17:59:00+01:00" },
+			{ label: "20h00", date: "2026-03-10T20:00:00+01:00" },
+		])("ne majore pas le prix à $label", ({ date }) => {
+			expect(priceOf({ at: new Date(date) })).toEqual(Money.euros(7));
+		});
+	});
+
+	describe("cumul des majorations (décision d2 : pointe ×1,5, puis Noël ×2, puis UberX +5 €)", () => {
+		it("cumule heure de pointe et soirée de Noël le 24/12 à 18h00 : 7 × 1,5 × 2 = 21 €", () => {
+			const christmasEveRush = new Date("2026-12-24T18:00:00+01:00");
+
+			expect(priceOf({ at: christmasEveRush })).toEqual(Money.euros(21));
+		});
+
+		it("cumule les trois majorations : trajet à 20 €, le 25/12 à 18h30, en UberX → 65 €", () => {
+			const route = { from: inParis(), to: inParis(), distanceKm: 36 };
+			const christmasRush = new Date("2026-12-25T18:30:00+01:00");
+
+			expect(priceOf({ route, at: christmasRush, options: UBERX })).toEqual(Money.euros(65));
 		});
 	});
 });

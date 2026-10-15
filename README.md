@@ -53,6 +53,17 @@ db/
 - Noms des tests en français, qui décrivent la règle métier.
 - Toute décision de spec est figée par un test et notée dans la section ci-dessous.
 
+## API (Story 8)
+
+| Route | Succès | Erreurs |
+|---|---|---|
+| `POST /rides` `{ riderId, fromAddress, toAddress, uberX? }` | 201 + la course | 400 `INVALID_REQUEST` / `INSUFFICIENT_FUNDS`, 404 `RIDER_NOT_FOUND`, 409 `RIDE_ALREADY_PENDING` |
+| `POST /rides/:rideId/cancel` | 204 | 404 `RIDE_NOT_FOUND`, 409 `RIDE_ALREADY_CANCELLED` / `RIDE_CANNOT_BE_CANCELLED` |
+| `GET /riders/:riderId/rides` | 200 + l'historique | 404 `RIDER_NOT_FOUND` |
+
+Prix en euros, dates en ISO 8601. Erreurs : `{ code, error }` ; toute erreur technique répond `500 { code: "INTERNAL_ERROR" }` sans détail interne.
+Démarrage : `DATABASE_URL` et `GOOGLE_MAPS_API_KEY` obligatoires (voir `.env.example`), base migrée (`npm run knex -- migrate:latest`).
+
 ## Décisions de spec
 
 À reporter depuis le board du projet une fois tranchées.
@@ -67,3 +78,9 @@ db/
 - **d8 — Distances Google (Story 7)** : Google a classé Distance Matrix API en « Legacy » (non activable sur les projets récents).
   La distance passe donc par **Routes API** (`computeRoutes`, appel `fetch`) ; la librairie `@googlemaps/google-maps-services-js`
   reste utilisée pour le géocodage (ville). Sur le projet Google Cloud : facturation activée, **Geocoding API** et **Routes API** activées.
+- **d9 — Assignation d'un Driver (Story 10)** : l'assignation se fait quand un Driver **accepte** une course PENDING
+  (`AcceptRideUseCase`) : la course passe à ASSIGNED avec son `driverId`. Pas d'algorithme d'attribution (hors périmètre).
+  Refus : Driver bloqué par le Rider → `DRIVER_BLOCKED` (règle `canBeAssignedTo`) ; course non PENDING → `RIDE_NOT_PENDING` ;
+  course, Driver ou Rider inconnu → `RIDE_NOT_FOUND` / `DRIVER_NOT_FOUND` / `RIDER_NOT_FOUND`.
+- **Heures de pointe (Story 9)** : +50 % (×1,5) de **8h00 à 9h00** et de **18h00 à 20h00**, heure de Paris ; 8h00 et 18h00 inclus,
+  9h00 et 20h00 exclus. Ordre des majorations (d2) : heures de pointe ×1,5, puis Noël ×2, puis UberX +5 €.
