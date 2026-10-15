@@ -5,4 +5,6 @@ export type { Route };
 /** Distance et villes entre deux adresses. Implémentation réelle : Google Maps (Story 7). */
 export interface DistanceGateway {
 	getRoute(fromAddress: string, toAddress: string): Promise<Route>;
+	getDistance(fromAddress: string, toAddress: string): Promise<number>;
+	getCity(address: string): Promise<string>;
 }
